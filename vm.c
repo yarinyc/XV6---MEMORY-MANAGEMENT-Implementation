@@ -231,6 +231,22 @@ allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
 
   a = PGROUNDUP(oldsz);
   for(; a < newsz; a += PGSIZE){
+    //task 1: if SELECTION is not NONE and process is not init or shell, use page framework
+    if ((SELECTION != NONE) && (myproc()->pid > 2)){
+      if (myproc()->num_pages_ram == MAX_PSYC_PAGES){
+         // Check if max page number has been reached
+        if (myproc()->num_pages_disk + MAX_PSYC_PAGES == MAX_TOTAL_PAGES){
+              cprintf("allocuvm: max number of pages reached, cannot allocate more pages for process\n");
+              return 0;
+        }
+        if (myproc()->swapFile == 0){
+            createSwapFile(myproc());
+        }
+        if (moveToDisk(choosePageFromRam()) == -1){ //if num of pages = max total pages, choose page from ram, and move it to file
+            return 0;
+        }
+      }
+    }
     mem = kalloc();
     if(mem == 0){
       cprintf("allocuvm out of memory\n");
@@ -243,6 +259,9 @@ allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
       deallocuvm(pgdir, newsz, oldsz);
       kfree(mem);
       return 0;
+    }
+    if (SELECTION != NONE){
+      addPageToRam((char *)a);  // Add the new page to Ram
     }
   }
   return newsz;

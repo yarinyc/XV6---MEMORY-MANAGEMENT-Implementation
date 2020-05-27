@@ -13,6 +13,10 @@ struct cpu {
 extern struct cpu cpus[NCPU];
 extern int ncpu;
 
+#define MAX_PSYC_PAGES 16  //maximum number of pages in physical memory
+#define MAX_TOTAL_PAGES 32 // maximum number of pages for process.
+#define NONE 1
+
 //PAGEBREAK: 17
 // Saved registers for kernel context switches.
 // Don't need to save all the segment registers (%cs, etc),
@@ -34,10 +38,21 @@ struct context {
 
 enum procstate { UNUSED, EMBRYO, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 
-struct meta_data{
-  uint page_id;
-  uint present;
-  uint offset;
+//task 1
+enum pagestate { NOT_USED, IN_MEMORY, IN_DISK };
+
+struct page_meta_data{
+  uint v_address;
+  enum pagestate state;
+  uint offset_in_file;
+};
+
+// Circular Linked list for pages currently in the physical memory
+struct page_link 
+{
+    struct page_meta_data page;              // Link in the list (every link is a page)
+    struct page_link *next;     // Next link in list
+    struct page_link *prev;     // Previous link in list
 };
 
 // Per-process state
@@ -57,7 +72,11 @@ struct proc {
   char name[16];                  // Process name (debugging)
   //Swap file. must initiate with create swap file
   struct file *swapFile;          //page file
-  struct meta_data meta_data[32]; //page offsets in swap file
+  
+  struct page_link pages_meta_data[MAX_TOTAL_PAGES]; //page's meta data array
+  struct page_link *page_list_head; //head of linked list of pages
+  uint num_pages_ram;
+  uint num_pages_disk;
 };
 
 // Process memory is laid out contiguously, low addresses first:

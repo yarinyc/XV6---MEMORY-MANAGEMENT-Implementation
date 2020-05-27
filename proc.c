@@ -7,6 +7,8 @@
 #include "proc.h"
 #include "spinlock.h"
 
+#define SELECTION 1 //ToRemove
+
 struct {
   struct spinlock lock;
   struct proc proc[NPROC];
@@ -111,6 +113,11 @@ found:
   p->context = (struct context*)sp;
   memset(p->context, 0, sizeof *p->context);
   p->context->eip = (uint)forkret;
+
+  // TASK 1.1: init pages_meta_data array
+  if (SELECTION != NONE){
+    init_meta_data(p);
+  }
 
   return p;
 }
@@ -532,3 +539,18 @@ procdump(void)
     cprintf("\n");
   }
 }
+
+void init_meta_data(struct proc *p){
+  p->swapFile = 0;
+  p->page_list_head = 0;
+  p->num_pages_disk = 0;
+  p->num_pages_ram = 0;
+  for (int i = 0; i < MAX_TOTAL_PAGES; i++){
+    p->pages_meta_data[i].page.v_address = 0xFFFFFFFF;
+    p->pages_meta_data[i].page.offset_in_file = -1;
+    p->pages_meta_data[i].page.state = NOT_USED;
+    p->pages_meta_data[i].next = 0;
+    p->pages_meta_data[i].prev = 0;
+  }
+}
+
