@@ -10,6 +10,10 @@
 extern char data[];  // defined by kernel.ld
 pde_t *kpgdir;  // for use in scheduler()
 
+//global variables for freevm function - use the global one if current process is within freevm
+int global_pgdir_flag = 0;
+pde_t global_pgdir;
+
 // Set up CPU's kernel segment descriptors.
 // Run once on entry on each CPU.
 void
@@ -276,6 +280,8 @@ deallocuvm(pde_t *pgdir, uint oldsz, uint newsz)
 {
   pte_t *pte;
   uint a, pa;
+  int pageFound;
+  struct page_link *page_link;
 
   if(newsz >= oldsz)
     return oldsz;
@@ -285,12 +291,41 @@ deallocuvm(pde_t *pgdir, uint oldsz, uint newsz)
     pte = walkpgdir(pgdir, (char*)a, 0);
     if(!pte)
       a = PGADDR(PDX(a) + 1, 0, 0) - PGSIZE;
+    //page is in RAM, so we delete the page and swap in a page from the swap file if one exists.
     else if((*pte & PTE_P) != 0){
       pa = PTE_ADDR(*pte);
       if(pa == 0)
         panic("kfree");
       char *v = P2V(pa);
       kfree(v);
+      *pte = 0;
+      if (SELECTION != NONE){ //if paging in on
+        for (page_link = &myproc()->pages_meta_data[0]; page_link < &myproc()->pages_meta_data[MAX_TOTAL_PAGES]; page_link++){
+          if (page_link->page.page_id == a){
+            pageFound = 1;
+            break;
+          }   
+        }
+        if (pageFound){
+          deletePage(page_link);
+        }
+      }
+    }
+    else if((SELECTION != NONE) && (*pte & PTE_PG)){ // if paging is on and page is in the swap file
+      //uint page_id = PTE_ADDR((uint) a);
+      uint page_id = a;
+      for (page_link = &myproc()->pages_meta_data[0]; page_link < &myproc()->pages_meta_data[MAX_TOTAL_PAGES]; page_link++){
+        if (page_link->page.page_id == page_id){
+          pageFound = 1;
+          break;
+        } 
+      }
+      if (pageFound){ // if page is found in the pages_meta_data, clear the struct values
+        myproc()->num_pages_disk--;
+        page_link->page.page_id = 0xFFFFFFFF;           
+        page_link->page.offset_in_file = -1;                
+        page_link->page.state = NOT_USED;
+      }
       *pte = 0;
     }
   }
@@ -403,6 +438,161 @@ copyout(pde_t *pgdir, uint va, void *p, uint len)
   }
   return 0;
 }
+
+//*************************** added functions: Task 1 ***************************
+void addPageToRam(char * addr){
+  struct page_link *lastPage = myproc()->page_list_head_ram;
+  struct page_link *newPageLink = 0;
+  int index = 0;
+  int pageFound = 0;
+  // if page_list_head_ram is null then set it's virtual address to pages_meta_data[0]
+  if (!lastPage){
+      newPageLink = &myproc()->pages_meta_data[0];
+      myproc()->page_list_head_ram = newPageLink;
+  }
+  // Search for last link in Ram pages list
+  else{
+    while(lastPage->next != 0){
+      lastPage = lastPage->next;
+    }
+    // Search if already exists entry in page directory table/ total pages array
+    for(newPageLink = &myproc()->pages_meta_data[0]; newPageLink < &myproc()->pages_meta_data[MAX_TOTAL_PAGES]; newPageLink++){
+      if (newPageLink->page.page_id == PTE_ADDR((uint) addr)){
+        pageFound = 1;
+        break;
+      }   
+      index++;
+    } 
+    // If entry doesn't exist, add a new page to array
+    if (!pageFound){
+      index = 0;
+      //searching for a place in the array that is unused
+      for(newPageLink = &myproc()->pages_meta_data[0]; newPageLink < &myproc()->pages_meta_data[MAX_TOTAL_PAGES]; newPageLink++){
+        if(newPageLink->page.state == NOT_USED) 
+        {
+          break;
+        }   
+        index++;
+      } 
+    }
+    //index now contains the place in the array that should contain the new page
+    lastPage->next = newPageLink;
+    newPageLink->prev = lastPage; 
+    //proc->paging_meta_data[tailPage->pg.pages_array_index] = *tailPage;
+  }
+  // Initialize page struct fields
+  newPageLink->next = 0;
+  newPageLink->page.page_id = PTE_ADDR(addr);
+  newPageLink->page.state = IN_MEMORY;
+  newPageLink->page.offset_in_file = -1;
+  // Update array of pages
+  //myproc()->paging_meta_data[page_array_index] = *pageInArray;
+  myproc()->num_pages_ram++;   
+}
+
+// moves a page from RAM to the swap file
+int moveToDisk(struct page_link *toSwap){
+  pte_t *pte;
+  // Check if should use the system global pgdir
+  pte_t * pgdir = (global_pgdir_flag == 1) ? global_pgdir : myproc()->pgdir;
+
+  pte = walkpgdir(pgdir, (char*)toSwap->page.page_id, 0);
+   // Write page to swap file from page's virtual address
+  if (movePageToFile(toSwap) == -1){
+    return -1;
+  }
+
+  // Update list pointers
+  removePageFromList(toSwap);
+  //proc->paging_meta_data[pageToSwapFromMem->pg.pages_array_index] = *pageToSwapFromMem;
+  if(pte != 0){
+    *pte = *pte & ~PTE_P;  // Clear PTE_P bit (present bit is cleared)
+    *pte = *pte | PTE_PG;  // Set PTE_PG bit (page out bit is set)
+  }
+  // free memory from Ram
+  uint page_id = PTE_ADDR(*pte);
+  char * v_address = P2V(page_id);
+  kfree(v_address);
+  lcr3(V2P(pgdir));
+  //myproc()->num_pages_disk++;
+  myproc()->num_pages_ram--;
+  return 0;
+}
+
+void
+removePageFromList(struct page_link * pageToRemove){
+  struct page_link *previousPage;
+  struct page_link *nextPage;
+  // Check if not head of list
+  if(pageToRemove->prev == 0){
+    // Set process pointer to head of list
+    myproc()->page_list_head_ram = pageToRemove->next;
+    if (pageToRemove->next != 0){ //if it wasn't a single link in the list then update next to be the new head
+      nextPage = pageToRemove->next;
+      nextPage->prev = 0;
+      //proc->paging_meta_data[nextPage->pg.pages_array_index] = *nextPage;
+    }
+  }
+  else{
+    previousPage = pageToRemove->prev;
+    previousPage->next = pageToRemove->next;
+    // if next is not null, updated next->prev = toremove->prev;
+    if (previousPage->next != 0){
+      nextPage = previousPage->next;
+      nextPage->prev = previousPage;
+      //myproc()->pages_meta_data[nextPage->pg.pages_array_index] = *nextPage;
+    }
+    // Tail of list (and not head)
+    //proc->paging_meta_data[previousPage->pg.pages_array_index] = *previousPage;
+  }
+  // Set pointer of current page
+  pageToRemove->prev = 0;
+  pageToRemove->next = 0;
+  //proc->paging_meta_data[pageToRemove->pg.pages_array_index] = *pageToRemove;
+}
+
+int movePageToFile(struct page_link *pageToWrite){
+  pte_t *pte;
+  // Check if should use the system global pgdir
+  pte_t * pgdir = (global_pgdir_flag == 1) ? global_pgdir : myproc()->pgdir;
+  pte = walkpgdir(pgdir, (char*)pageToWrite->page.page_id, 0);
+
+  if (pte == 0){
+    panic ("movePageToFile: page doesn't exist\n");   
+  }
+  if (!(*pte & PTE_P)){
+    panic ("movePageToFile: page isn't present\n"); 
+  }
+  uint offset = nextAvOffset(); //get a free offset index in the swap file
+  if(offset == -1)
+    panic("movePageToFile: swapFile is full!"); 
+  if (writeToSwapFile(myproc(), (char*) pageToWrite->page.page_id, PGSIZE*offset, PGSIZE) == -1){
+    cprintf("ERROR in movePageToFile\n");
+    return -1;
+  }
+  pageToWrite->page.offset_in_file = PGSIZE*offset;
+  myproc()->available_Offsets[offset] = 1;
+  pageToWrite->page.state = IN_DISK;
+  myproc()->num_pages_disk++;
+  return 0;
+}
+
+int 
+nextAvOffset(){
+  for (int i = 0; i < 17; i++){
+    if(myproc()->available_Offsets[i] == 0){
+      return i;
+    }
+  }
+  return -1;
+}
+// choosePageFromRam()
+// deletePage()
+//+ all functions that temove pages from disk to Ram
+
+
+
+//***************************                  ***************************
 
 //PAGEBREAK!
 // Blank page.

@@ -42,14 +42,13 @@ enum procstate { UNUSED, EMBRYO, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 enum pagestate { NOT_USED, IN_MEMORY, IN_DISK };
 
 struct page_meta_data{
-  uint v_address;
+  uint page_id;
   enum pagestate state;
   uint offset_in_file;
 };
 
-// Circular Linked list for pages currently in the physical memory
-struct page_link 
-{
+// Linked list for pages currently in the physical memory
+struct page_link{
     struct page_meta_data page;              // Link in the list (every link is a page)
     struct page_link *next;     // Next link in list
     struct page_link *prev;     // Previous link in list
@@ -74,9 +73,10 @@ struct proc {
   struct file *swapFile;          //page file
   
   struct page_link pages_meta_data[MAX_TOTAL_PAGES]; //page's meta data array
-  struct page_link *page_list_head; //head of linked list of pages
+  struct page_link *page_list_head_ram; //head of linked list of pages in RAM
   uint num_pages_ram;
   uint num_pages_disk;
+  char available_Offsets[17];       // array of avilable file offset 
 };
 
 // Process memory is laid out contiguously, low addresses first:
