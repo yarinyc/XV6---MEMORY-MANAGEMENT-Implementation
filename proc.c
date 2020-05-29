@@ -7,8 +7,6 @@
 #include "proc.h"
 #include "spinlock.h"
 
-#define SELECTION 1 //ToRemove
-
 struct {
   struct spinlock lock;
   struct proc proc[NPROC];

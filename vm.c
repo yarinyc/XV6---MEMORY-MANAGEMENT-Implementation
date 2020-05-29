@@ -322,6 +322,7 @@ deallocuvm(pde_t *pgdir, uint oldsz, uint newsz)
       }
       if (pageFound){ // if page is found in the pages_meta_data, clear the struct values
         myproc()->num_pages_disk--;
+        myproc()->available_Offsets[page_link->page.offset_in_file / PGSIZE] = 0; // free the offset in the offsets array
         page_link->page.page_id = 0xFFFFFFFF;           
         page_link->page.offset_in_file = -1;                
         page_link->page.state = NOT_USED;
@@ -338,9 +339,10 @@ void
 freevm(pde_t *pgdir)
 {
   uint i;
-
   if(pgdir == 0)
     panic("freevm: no pgdir");
+  global_pgdir_flag = 1;
+  global_pgdir = pgdir;
   deallocuvm(pgdir, KERNBASE, 0);
   for(i = 0; i < NPDENTRIES; i++){
     if(pgdir[i] & PTE_P){
@@ -348,6 +350,7 @@ freevm(pde_t *pgdir)
       kfree(v);
     }
   }
+  global_pgdir_flag = 0;
   kfree((char*)pgdir);
 }
 
@@ -520,7 +523,7 @@ int moveToDisk(struct page_link *toSwap){
 }
 
 void
-removePageFromList(struct page_link * pageToRemove){
+removePageFromList(struct page_link *pageToRemove){
   struct page_link *previousPage;
   struct page_link *nextPage;
   // Check if not head of list
@@ -551,6 +554,7 @@ removePageFromList(struct page_link * pageToRemove){
   //proc->paging_meta_data[pageToRemove->pg.pages_array_index] = *pageToRemove;
 }
 
+//move a page from RAM to the swap file
 int movePageToFile(struct page_link *pageToWrite){
   pte_t *pte;
   // Check if should use the system global pgdir
@@ -586,9 +590,43 @@ nextAvOffset(){
   }
   return -1;
 }
+
+// delete a page from RAM and bring a page from file if it exists
+void deletePage(struct page_link *pageToRemove){
+  if (myproc()->num_pages_ram > 0){
+    myproc()->num_pages_ram--;
+  }
+  // reset the page entry
+  pageToRemove->page.page_id = 0xFFFFFFFF;
+  pageToRemove->page.state = NOT_USED;
+  pageToRemove->page.offset_in_file = -1;
+  //if there is a page is the swap file bring it to RAM
+  if (myproc()->num_pages_disk > 0){
+    struct page_link *page_link;
+    for (page_link = &myproc()->pages_meta_data[0]; page_link < &myproc()->pages_meta_data[MAX_TOTAL_PAGES]; page_link++){
+      if (page_link->page.state == IN_DISK){
+        if(getPageFromFile(page_link) == -1){
+          return;
+        }
+        break;
+      }   
+    } 
+  }
+}
+
+// get a page from the swap file to RAM
+int getPageFromFile(struct page_link *page_link){ 
+  if (page_link->page.offset_in_file < 0){
+    cprintf("file2mem: page doesn't have an offset in the swap file\n");
+    return -1;
+  }
+  // Check if should use the system global pgdir
+  pte_t *pgdir = (global_pgdir_flag == 1) ? global_pgdir : myproc()->pgdir;
+  pte_t * pte = walkpgdir(pgdir, (void *)(PTE_ADDR(page_link->page.page_id)), 0);
+}
+
 // choosePageFromRam()
-// deletePage()
-//+ all functions that temove pages from disk to Ram
+//+ all functions that remove pages from disk to Ram
 
 
 
