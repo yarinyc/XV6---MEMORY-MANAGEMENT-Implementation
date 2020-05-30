@@ -15,7 +15,12 @@ extern int ncpu;
 
 #define MAX_PSYC_PAGES 16  //maximum number of pages in physical memory
 #define MAX_TOTAL_PAGES 32 // maximum number of pages for process.
-#define NONE 1
+
+#define SELECTION 1 //ToRemove
+#define LIFO 1
+#define SCFIFO 2
+#define LAP 3
+#define NONE 4
 
 //PAGEBREAK: 17
 // Saved registers for kernel context switches.

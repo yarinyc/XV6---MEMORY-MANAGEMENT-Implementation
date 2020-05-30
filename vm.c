@@ -14,6 +14,17 @@ pde_t *kpgdir;  // for use in scheduler()
 int global_pgdir_flag = 0;
 pde_t global_pgdir;
 
+//declarations for Task 1:
+void addPageToRam(char * addr);
+void removePageFromList(struct page_link *pageToRemove);
+void addPageToList(struct page_link *pageToAdd);
+int moveToDisk(struct page_link *toSwap);
+int movePageToFile(struct page_link *pageToWrite);
+int getPageFromFile(struct page_link *page_link);
+int nextAvOffset();
+void deletePage(struct page_link *pageToRemove);
+void setFlagsOnSwap(pde_t *pgdir, char *virtAddr, int swapIn);
+
 // Set up CPU's kernel segment descriptors.
 // Run once on entry on each CPU.
 void
@@ -443,6 +454,8 @@ copyout(pde_t *pgdir, uint va, void *p, uint len)
 }
 
 //*************************** added functions: Task 1 ***************************
+
+//add a new page to the RAM list (also allocates space in the page_link array)
 void addPageToRam(char * addr){
   struct page_link *lastPage = myproc()->page_list_head_ram;
   struct page_link *newPageLink = 0;
@@ -495,11 +508,11 @@ void addPageToRam(char * addr){
 
 // moves a page from RAM to the swap file
 int moveToDisk(struct page_link *toSwap){
-  pte_t *pte;
-  // Check if should use the system global pgdir
-  pte_t * pgdir = (global_pgdir_flag == 1) ? global_pgdir : myproc()->pgdir;
 
-  pte = walkpgdir(pgdir, (char*)toSwap->page.page_id, 0);
+  // Check if should use the system global pgdir
+  pde_t * pgdir = (global_pgdir_flag == 1) ? global_pgdir : myproc()->pgdir;
+
+  pte_t *pte = walkpgdir(pgdir, (char*)toSwap->page.page_id, 0);
    // Write page to swap file from page's virtual address
   if (movePageToFile(toSwap) == -1){
     return -1;
@@ -508,10 +521,9 @@ int moveToDisk(struct page_link *toSwap){
   // Update list pointers
   removePageFromList(toSwap);
   //proc->paging_meta_data[pageToSwapFromMem->pg.pages_array_index] = *pageToSwapFromMem;
-  if(pte != 0){
-    *pte = *pte & ~PTE_P;  // Clear PTE_P bit (present bit is cleared)
-    *pte = *pte | PTE_PG;  // Set PTE_PG bit (page out bit is set)
-  }
+
+  setFlagsOnSwap(pgdir, (char *)toSwap->page.page_id, 0); // set relevant flags
+
   // free memory from Ram
   uint page_id = PTE_ADDR(*pte);
   char * v_address = P2V(page_id);
@@ -554,12 +566,27 @@ removePageFromList(struct page_link *pageToRemove){
   //proc->paging_meta_data[pageToRemove->pg.pages_array_index] = *pageToRemove;
 }
 
-//move a page from RAM to the swap file
+// add page to the RAM pages list
+void addPageToList(struct page_link *pageToAdd){
+  if(myproc()->page_list_head_ram == 0){
+    myproc()->page_list_head_ram = pageToAdd;
+    pageToAdd->next = 0;
+    pageToAdd->prev = 0;
+  }
+  struct page_link *lastPage = myproc()->page_list_head_ram;
+  while (lastPage->next != 0){
+      lastPage = lastPage->next;
+  }
+  lastPage->next = pageToAdd;
+  pageToAdd->prev = lastPage;
+  pageToAdd->next = 0;
+}
+
+//move a page from RAM to the swap file (aux for moveToDisk() )
 int movePageToFile(struct page_link *pageToWrite){
-  pte_t *pte;
   // Check if should use the system global pgdir
-  pte_t * pgdir = (global_pgdir_flag == 1) ? global_pgdir : myproc()->pgdir;
-  pte = walkpgdir(pgdir, (char*)pageToWrite->page.page_id, 0);
+  pde_t *pgdir = (global_pgdir_flag == 1) ? global_pgdir : myproc()->pgdir;
+  pte_t *pte = walkpgdir(pgdir, (char*)pageToWrite->page.page_id, 0);
 
   if (pte == 0){
     panic ("movePageToFile: page doesn't exist\n");   
@@ -581,8 +608,8 @@ int movePageToFile(struct page_link *pageToWrite){
   return 0;
 }
 
-int 
-nextAvOffset(){
+//get an available offset index in the swap file
+int nextAvOffset(){
   for (int i = 0; i < 17; i++){
     if(myproc()->available_Offsets[i] == 0){
       return i;
@@ -621,16 +648,141 @@ int getPageFromFile(struct page_link *page_link){
     return -1;
   }
   // Check if should use the system global pgdir
-  pte_t *pgdir = (global_pgdir_flag == 1) ? global_pgdir : myproc()->pgdir;
-  pte_t * pte = walkpgdir(pgdir, (void *)(PTE_ADDR(page_link->page.page_id)), 0);
+  pde_t *pgdir = (global_pgdir_flag == 1) ? global_pgdir : myproc()->pgdir;
+
+  //pte_t *pte = walkpgdir(pgdir, (void*)page_link->page.page_id, 0); //add PTE_ADDR macro to page_id ?
+  char *addr = kalloc();
+  if(addr == 0){
+    panic("getPageFromFile: kalloc out of memory\n");
+  }
+
+  mappages(pgdir, (char *) page_link->page.page_id, PGSIZE, V2P(addr), PTE_W | PTE_U);
+
+  if (readFromSwapFile(myproc(), addr, page_link->page.offset_in_file, PGSIZE) == -1){
+    cprintf("getPageFromFile: read from swap file failed\n");
+    return -1;
+  }
+
+  // if (walkpgdir(pgdir, (void*)page_link->page.page_id, 0) == 0) {
+  //   panic("getPageFromFile: pte should exist");
+  // }
+  setFlagsOnSwap(pgdir, (char *) page_link->page.page_id, 1); // set relevant flags
+  myproc()->num_pages_ram++;
+  myproc()->num_pages_disk--; 
+  page_link->page.offset_in_file = -1;
+  page_link->page.state = IN_MEMORY;
+
+  // add page_link the the RAM list
+  addPageToList(page_link);
+
+  // Update array of pages
+  // proc->paging_meta_data[tailPage->pg.pages_array_index] = *tailPage;
+  // proc->paging_meta_data[pageToSwapFromFile->pg.pages_array_index] = *pageToSwapFromFile;
+  return 0;
 }
 
-// choosePageFromRam()
-//+ all functions that remove pages from disk to Ram
+// if swapIn == 1 then set present flag and clear PG flag, otherwise clear present flag and set PG flag
+void
+setFlagsOnSwap(pde_t *pgdir, char *virtAddr, int swapIn){ //set present flag and clear page_out flag
+  pte_t *pte = walkpgdir(pgdir, virtAddr, 0);
+  if(pte == 0){
+    panic("set_present_clear_pagedout\n");
+  }
+  if(swapIn){
+    *pte = *pte & ~PTE_PG;  // Clear PTE_PG flag
+    *pte = *pte | PTE_P;    // Set PTE_P flag
+  }
+  else{
+    *pte = *pte & ~PTE_P;   // Clear PTE_P flag
+    *pte = *pte | PTE_PG;   // Set PTE_PG flag
+  }
+}
+
+//aux function for trap.c to use walkpgdir function non stat
+pte_t* walkpgdir_aux(pde_t *pgdir, const void *va, int alloc){
+  return walkpgdir(pgdir, va, alloc);
+}
+
+int
+swapPages(uint addr){
+  struct page_link *page_link_out = choosePageToSwap();  // Choose a page to swap out
+  struct page_link *page_link_in;
+  int flag = 0;
+
+  // Look for the required page entry in pages meta data array
+  for (page_link_in = &myproc()->pages_meta_data[0]; page_link_in < &myproc()->pages_meta_data[MAX_TOTAL_PAGES]; page_link_in++){
+    if (page_link_in->page.page_id == addr){
+      flag = 1;
+      break;
+    }   
+  } 
+  // didn't find the page
+  if (!flag){
+    return -1;
+  }
+
+  if(page_link_out != 0){
+    // Write page to swap file and read from swap file
+    moveToDisk(page_link_out);
+  }
+  getPageFromFile(page_link_in);
+
+  // Check if should use the system global pgdir
+  //pde_t *pgdir = (global_pgdir_flag == 1) ? global_pgdir : myproc()->pgdir;
+
+  // set_PTE_A(pgdir,(char *) page_link_in->page.page_id);
+
+  // cprintf("swapPages ends.\npage number %d --> file.\npage number %d with virtual address 0x%x--> physical memory.\n",page_link_out->pg.pages_array_index, page_link_in->pg.pages_array_index, page_link_in->pg.virtualAddr);
+  // cprintf("Swap Pages: List after swaping pages : \n");
+  // printList();
+  return 0;
+}
+
+// chooses a page to swap out of RAM according to the current selection of page replacement schemes
+struct page_link* choosePageToSwap(){
+  struct page_link *page_link = myproc()->page_list_head_ram;
+  struct page_link *tmp;
+  int found = 0;
+
+  // Check if should use the system global pgdir
+  pde_t *pgdir = (global_pgdir_flag == 1) ? global_pgdir : myproc()->pgdir;
+
+  // If list is null (no page to swap out) --> return to calling function allocuvm
+  if (!page_link){
+    return 0;
+  }
+
+  // at the end of the Switch-Case, page_link holds the page to swap out
+  switch(SELECTION){
+    case(LIFO):   // Last In First Out: last page_link in the list will swap out
+      while (page_link->next != 0){
+        page_link = page_link->next;
+      }
+      break;
+    // According to the order in which the pages were created and the status of the PTE_A (accessed/reference bit) flag of the page table entry 
+    // Inspect pages from oldest to newest:
+    // If page's referenced bit is on, give it a second chance: Clear bit & Move to end of list
+    case(SCFIFO):   //Second Chance First In First Out
+      while (!found){
+        // If PTE_A is set (been accessed) --> move to the end of list
+        // if (check_PTE_A(pgdir, (char *)page_link->page.page_id) > 0){
+        //   movePageToListEndSCFIFO(page_link);
+        //   page_link = myproc()->page_list_head_ram;
+        // }
+        // // PTE_A is not set --> choose that page
+        // else{
+        //   found = 1;
+        // }
+      }
+      break;
+  }
+  return page_link;
+}
 
 
 
-//***************************                  ***************************
+
+//**************************************************************************
 
 //PAGEBREAK!
 // Blank page.
