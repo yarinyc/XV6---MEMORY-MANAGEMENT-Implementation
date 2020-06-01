@@ -16,11 +16,11 @@ extern int ncpu;
 #define MAX_PSYC_PAGES 16  //maximum number of pages in physical memory
 #define MAX_TOTAL_PAGES 32 // maximum number of pages for process.
 
-#define SELECTION 1 //ToRemove
-#define LIFO 1
-#define SCFIFO 2
-#define LAP 3
-#define NONE 4
+#define NFUA 1
+#define LAP 2
+#define SCFIFO 3
+#define AQ 4
+#define NONE 5
 
 //PAGEBREAK: 17
 // Saved registers for kernel context switches.
@@ -83,6 +83,8 @@ struct proc {
   uint num_pages_disk;
   char available_Offsets[17];       // array of avilable file offset 
 };
+
+void init_meta_data(struct proc *p);
 
 // Process memory is laid out contiguously, low addresses first:
 //   text

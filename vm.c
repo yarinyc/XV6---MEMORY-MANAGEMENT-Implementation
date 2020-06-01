@@ -12,7 +12,7 @@ pde_t *kpgdir;  // for use in scheduler()
 
 //global variables for freevm function - use the global one if current process is within freevm
 int global_pgdir_flag = 0;
-pde_t global_pgdir;
+pde_t *global_pgdir;
 
 //declarations for Task 1:
 void addPageToRam(char * addr);
@@ -21,9 +21,11 @@ void addPageToList(struct page_link *pageToAdd);
 int moveToDisk(struct page_link *toSwap);
 int movePageToFile(struct page_link *pageToWrite);
 int getPageFromFile(struct page_link *page_link);
-int nextAvOffset();
+int nextAvOffset(void);
 void deletePage(struct page_link *pageToRemove);
 void setFlagsOnSwap(pde_t *pgdir, char *virtAddr, int swapIn);
+int swapPages(uint addr);
+struct page_link* choosePageToSwap(void);
 
 // Set up CPU's kernel segment descriptors.
 // Run once on entry on each CPU.
@@ -257,7 +259,7 @@ allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
         if (myproc()->swapFile == 0){
             createSwapFile(myproc());
         }
-        if (moveToDisk(choosePageFromRam()) == -1){ //if num of pages = max total pages, choose page from ram, and move it to file
+        if (moveToDisk(choosePageToSwap()) == -1){ //if num of pages = max total pages, choose page from ram, and move it to file
             return 0;
         }
       }
@@ -393,16 +395,23 @@ copyuvm(pde_t *pgdir, uint sz)
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walkpgdir(pgdir, (void *) i, 0)) == 0)
       panic("copyuvm: pte should exist");
-    if(!(*pte & PTE_P))
-      panic("copyuvm: page not present");
+    if(!((*pte & PTE_P) || (*pte & PTE_PG))) // page can be also in swap file
+      panic("copyuvm: page not present in RAM or swap file");
+
     pa = PTE_ADDR(*pte);
     flags = PTE_FLAGS(*pte);
-    if((mem = kalloc()) == 0)
-      goto bad;
-    memmove(mem, (char*)P2V(pa), PGSIZE);
-    if(mappages(d, (void*)i, PGSIZE, V2P(mem), flags) < 0) {
-      kfree(mem);
-      goto bad;
+    if(*pte & PTE_P){ // page is in RAM
+      if((mem = kalloc()) == 0)
+        goto bad;
+      memmove(mem, (char*)P2V(pa), PGSIZE);
+      if(mappages(d, (void*)i, PGSIZE, V2P(mem), flags) < 0) {
+        kfree(mem);
+        goto bad;
+      }
+    }
+    else{ // page is in swapfile
+      pte_t *page_in_file_pte = walkpgdir(d, (void*) i, 1); // find the pte of the page that is in the swap file, create the pde if needed
+      *page_in_file_pte = (*pte & 0xfff);
     }
   }
   return d;
@@ -566,7 +575,7 @@ removePageFromList(struct page_link *pageToRemove){
   //proc->paging_meta_data[pageToRemove->pg.pages_array_index] = *pageToRemove;
 }
 
-// add page to the RAM pages list
+// add page to the RAM pages list to the end of the list 
 void addPageToList(struct page_link *pageToAdd){
   if(myproc()->page_list_head_ram == 0){
     myproc()->page_list_head_ram = pageToAdd;
@@ -644,7 +653,7 @@ void deletePage(struct page_link *pageToRemove){
 // get a page from the swap file to RAM
 int getPageFromFile(struct page_link *page_link){ 
   if (page_link->page.offset_in_file < 0){
-    cprintf("file2mem: page doesn't have an offset in the swap file\n");
+    cprintf("getPageFromFile: page doesn't have an offset in the swap file\n");
     return -1;
   }
   // Check if should use the system global pgdir
@@ -698,7 +707,7 @@ setFlagsOnSwap(pde_t *pgdir, char *virtAddr, int swapIn){ //set present flag and
   }
 }
 
-//aux function for trap.c to use walkpgdir function non stat
+//aux function for other files to use walkpgdir function non static
 pte_t* walkpgdir_aux(pde_t *pgdir, const void *va, int alloc){
   return walkpgdir(pgdir, va, alloc);
 }
@@ -741,7 +750,7 @@ swapPages(uint addr){
 // chooses a page to swap out of RAM according to the current selection of page replacement schemes
 struct page_link* choosePageToSwap(){
   struct page_link *page_link = myproc()->page_list_head_ram;
-  struct page_link *tmp;
+  //struct page_link *tmp;
   int found = 0;
 
   // Check if should use the system global pgdir
@@ -754,7 +763,7 @@ struct page_link* choosePageToSwap(){
 
   // at the end of the Switch-Case, page_link holds the page to swap out
   switch(SELECTION){
-    case(LIFO):   // Last In First Out: last page_link in the list will swap out
+    case(SCFIFO):   // Last In First Out: last page_link in the list will swap out
       while (page_link->next != 0){
         page_link = page_link->next;
       }
@@ -765,21 +774,60 @@ struct page_link* choosePageToSwap(){
     case(SCFIFO):   //Second Chance First In First Out
       while (!found){
         // If PTE_A is set (been accessed) --> move to the end of list
-        // if (check_PTE_A(pgdir, (char *)page_link->page.page_id) > 0){
-        //   movePageToListEndSCFIFO(page_link);
-        //   page_link = myproc()->page_list_head_ram;
-        // }
-        // // PTE_A is not set --> choose that page
-        // else{
-        //   found = 1;
-        // }
+        if (is_PTE_A(pgdir, (char *)page_link->page.page_id) > 0){
+           PTE_A_off(pgdir, (char *)page_link->page.page_id);
+           removePageFromList(page_link);
+           addPageToList(page_link); //add the page to the end of the list
+           page_link = myproc()->page_list_head_ram;
+         }
+         // PTE_A is not set --> choose that page
+        else{
+           found = 1;
+         }
       }
       break;
+      // case(LAP):
+
+      //     // Find least accessed page to swap out
+      //     tmp = proc->mem_pages_head;
+      //     int minimalAccessed = tmp->pg.num_times_accessed;
+      //     while (tmp->next != 0)
+      //     {
+      //       tmp = tmp->next;
+      //       if (tmp->pg.num_times_accessed < minimalAccessed)
+      //       {
+      //         pageToRemove = tmp;
+      //         minimalAccessed = tmp->pg.num_times_accessed;
+      //       }
+      //     }
+      //     break;
   }
   return page_link;
 }
 
+uint
+is_PTE_A(pde_t *pgdir, char *virtualAddr){
+  pte_t *pte;
+  pte = walkpgdir(pgdir, virtualAddr, 0);
+  if(pte == 0)
+    panic("is_PTE_A: fail");
+  int phAdress = 0;
+  phAdress = *pte;
+  phAdress = phAdress & PTE_A;   
+  return (phAdress != 0) ? 1 : 0; // 1 if the bit is on , else 0  
+}
 
+void
+PTE_A_off(pde_t *pgdir, char *virtualAddr)
+{
+  pte_t *pte;
+  pte = walkpgdir(pgdir, virtualAddr, 0);
+  if(pte == 0)
+    panic("PTE_A_off: fail");
+  *pte = *pte * (~PTE_A);
+}
+
+//ToDo:
 
 
 //**************************************************************************

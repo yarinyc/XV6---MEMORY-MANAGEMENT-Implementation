@@ -19,6 +19,11 @@ exec(char *path, char **argv)
   pde_t *pgdir, *oldpgdir;
   struct proc *curproc = myproc();
 
+  struct page_link backup_array[MAX_TOTAL_PAGES];
+  struct page_link * backup_list_head = curproc->page_list_head_ram;
+  int num_pages_ram = curproc->num_pages_ram;
+  int num_pages_disk = curproc->num_pages_disk;
+
   begin_op();
 
   if((ip = namei(path)) == 0){
@@ -37,6 +42,22 @@ exec(char *path, char **argv)
 
   if((pgdir = setupkvm()) == 0)
     goto bad;
+
+  if(SELECTION != NONE){
+
+    for (int i = 0; i < MAX_TOTAL_PAGES; i++){
+      backup_array[i].page = curproc->pages_meta_data[i].page;
+      if (curproc->pages_meta_data[i].prev != 0){
+        backup_array[i].prev = curproc->pages_meta_data[i].prev;
+      }
+      if (curproc->pages_meta_data[i].next != 0){
+        backup_array[i].next = curproc->pages_meta_data[i].next;
+      }
+    }
+    backup_list_head = curproc->page_list_head_ram;
+    init_meta_data(curproc);
+    
+  }
 
   // Load program into memory.
   sz = 0;
@@ -99,6 +120,14 @@ exec(char *path, char **argv)
   curproc->sz = sz;
   curproc->tf->eip = elf.entry;  // main
   curproc->tf->esp = sp;
+
+  if (SELECTION != NONE){
+    if (curproc->swapFile != 0){ // if the proc has a swap file delete it and create a new one
+      removeSwapFile(curproc);
+      createSwapFile(curproc);
+    }
+  }
+
   switchuvm(curproc);
   freevm(oldpgdir);
   return 0;
@@ -109,6 +138,20 @@ exec(char *path, char **argv)
   if(ip){
     iunlockput(ip);
     end_op();
+  }
+  if (SELECTION != NONE){ //restore old meta data of proc if exec failed
+    curproc->num_pages_ram = num_pages_ram;
+    curproc->num_pages_disk = num_pages_disk;
+    curproc->page_list_head_ram = backup_list_head;
+    for (int i = 0; i < MAX_TOTAL_PAGES; i++){
+      curproc->pages_meta_data[i].page = backup_array[i].page;
+      if (backup_array[i].prev != 0){
+        curproc->pages_meta_data[i].prev = backup_array[i].prev;
+      }
+      if (backup_array[i].next != 0){
+        curproc->pages_meta_data[i].next = backup_array[i].next;
+      }
+    }
   }
   return -1;
 }

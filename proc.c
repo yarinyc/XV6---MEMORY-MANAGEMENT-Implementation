@@ -14,6 +14,8 @@ struct {
 
 static struct proc *initproc;
 
+void deepCopyProc(struct proc* father, struct proc* child);
+
 int nextpid = 1;
 extern void forkret(void);
 extern void trapret(void);
@@ -208,6 +210,11 @@ fork(void)
   // Clear %eax so that fork returns 0 in the child.
   np->tf->eax = 0;
 
+  // Copy contents of swapFile\list\array from parent to child
+  if (curproc && (SELECTION != NONE) && (curproc->pid > 2)){
+    deepCopyProc(curproc, np);
+  }
+
   for(i = 0; i < NOFILE; i++)
     if(curproc->ofile[i])
       np->ofile[i] = filedup(curproc->ofile[i]);
@@ -251,6 +258,11 @@ exit(void)
   iput(curproc->cwd);
   end_op();
   curproc->cwd = 0;
+
+  if ((curproc->swapFile != 0) && (SELECTION != NONE)){ //delete the proc's swap file before termination
+      removeSwapFile(curproc);
+      curproc->swapFile = 0;
+  }
 
   acquire(&ptable.lock);
 
@@ -551,5 +563,38 @@ void init_meta_data(struct proc *p){
     p->pages_meta_data[i].next = 0;
     p->pages_meta_data[i].prev = 0;
   }
+}
+
+void deepCopyProc(struct proc* father, struct proc* child){
+  uint offset = 0;
+  if(father->swapFile != 0){
+    char buffer[PGSIZE];
+    cprintf("\nCopying contents of father process's %d swap file into child's process %d swap file...\n\n", father->pid, child->pid);
+    if(child->swapFile == 0){
+      createSwapFile(child);
+    }
+    memset(buffer, 0, PGSIZE);
+    while(readFromSwapFile(father, buffer, offset, PGSIZE) != -1){
+      if(writeToSwapFile(child, buffer, offset, PGSIZE) == -1){
+        cprintf("ERROR in writing at deepCopyProc\n");
+      }
+      offset+= PGSIZE;
+      memset(buffer, 0, PGSIZE);
+    }
+  }
+  // Update next and prev of child RAM list
+  for(int i = 0; i < MAX_TOTAL_PAGES; i++){
+    child->pages_meta_data[i].page = father->pages_meta_data[i].page;
+    if(father->pages_meta_data[i].prev != 0){
+      child->pages_meta_data[i].prev = father->pages_meta_data[i].prev;
+    }
+    if(father->pages_meta_data[i].next != 0){
+      child->pages_meta_data[i].next = father->pages_meta_data[i].next;
+    }
+  }
+
+  child->page_list_head_ram = father->page_list_head_ram;
+  child->num_pages_disk = father->num_pages_disk;
+  child->num_pages_ram = father->num_pages_ram;
 }
 
