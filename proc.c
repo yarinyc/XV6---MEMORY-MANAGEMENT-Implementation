@@ -167,7 +167,6 @@ growproc(int n)
 {
   uint sz;
   struct proc *curproc = myproc();
-
   sz = curproc->sz;
   if(n > 0){
     if((sz = allocuvm(curproc->pgdir, sz, sz + n)) == 0)
@@ -562,6 +561,12 @@ void init_meta_data(struct proc *p){
     p->pages_meta_data[i].page.state = NOT_USED;
     p->pages_meta_data[i].next = 0;
     p->pages_meta_data[i].prev = 0;
+    if(SELECTION == NFUA){
+      p->pages_meta_data[i].page.shiftCounter = 0;
+    }
+    if(SELECTION == LAPA){
+      p->pages_meta_data[i].page.shiftCounter = 0xFFFFFFFF;
+    }
   }
 }
 
@@ -596,5 +601,60 @@ void deepCopyProc(struct proc* father, struct proc* child){
   child->page_list_head_ram = father->page_list_head_ram;
   child->num_pages_disk = father->num_pages_disk;
   child->num_pages_ram = father->num_pages_ram;
+}
+
+void 
+printList(void)
+{
+if ((SELECTION == NONE) || (myproc()->pid <= 2))
+{
+  return;
+}
+struct page_link * tmp = myproc()->page_list_head_ram;
+pte_t *pte = 0;
+cprintf("\n***** Printing List for process %d *****\n\n", myproc()->pid);
+while(tmp != 0)
+{
+  if (tmp->next != 0) {
+
+  if (SELECTION == LAPA){
+    cprintf("%d (accss: %d)---> ", tmp->page.page_id); 
+  }
+  else if (SELECTION == SCFIFO) {  
+      pte = walkpgdir_aux(myproc()->pgdir, (void *) tmp->page.page_id, 0);
+
+      if ((*pte & PTE_A) > 0){
+        cprintf("%d (on) ---> ", tmp->page.page_id); 
+      }
+      else {
+        cprintf("%d (off) ---> ",tmp->page.page_id); 
+      } 
+    }
+    else {
+      cprintf("%d ---> ", tmp->page.page_id); 
+    }
+  }
+
+else {
+    if (SELECTION == LAPA) {
+       //cprintf("%d (accss: %d)\n", tmp->page.page_id); 
+    }
+    else if (SELECTION == SCFIFO) {  
+    pte = walkpgdir_aux(myproc()->pgdir, (void *) tmp->page.page_id, 0);
+
+    if ((*pte & PTE_A) > 0){
+      cprintf("%d (on)\n", tmp->page.page_id); 
+    }
+    else {
+      cprintf("%d (off)\n", tmp->page.page_id); 
+    }
+  }
+        else {
+    cprintf("%d\n", tmp->page.page_id); 
+  }
+}
+tmp = tmp->next;
+}
+cprintf("\n***** Finished Printing List for process %d *****\n\n", myproc()->pid);
 }
 

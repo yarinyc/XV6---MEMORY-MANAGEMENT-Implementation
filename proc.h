@@ -17,7 +17,7 @@ extern int ncpu;
 #define MAX_TOTAL_PAGES 32 // maximum number of pages for process.
 
 #define NFUA 1
-#define LAP 2
+#define LAPA 2
 #define SCFIFO 3
 #define AQ 4
 #define NONE 5
@@ -50,6 +50,7 @@ struct page_meta_data{
   uint page_id;
   enum pagestate state;
   uint offset_in_file;
+  uint shiftCounter;
 };
 
 // Linked list for pages currently in the physical memory
@@ -85,6 +86,7 @@ struct proc {
 };
 
 void init_meta_data(struct proc *p);
+void printList(void);
 
 // Process memory is laid out contiguously, low addresses first:
 //   text

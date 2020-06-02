@@ -26,6 +26,11 @@ void deletePage(struct page_link *pageToRemove);
 void setFlagsOnSwap(pde_t *pgdir, char *virtAddr, int swapIn);
 int swapPages(uint addr);
 struct page_link* choosePageToSwap(void);
+uint numOfOnes(uint shiftCounter);
+uint is_PTE_A(pde_t *pgdir, char *virtualAddr);
+void PTE_A_off(pde_t *pgdir, char *virtualAddr);
+
+void print_list(void);
 
 // Set up CPU's kernel segment descriptors.
 // Run once on entry on each CPU.
@@ -466,6 +471,7 @@ copyout(pde_t *pgdir, uint va, void *p, uint len)
 
 //add a new page to the RAM list (also allocates space in the page_link array)
 void addPageToRam(char * addr){
+  cprintf("%d\n", addr);
   struct page_link *lastPage = myproc()->page_list_head_ram;
   struct page_link *newPageLink = 0;
   int index = 0;
@@ -478,6 +484,7 @@ void addPageToRam(char * addr){
   // Search for last link in Ram pages list
   else{
     while(lastPage->next != 0){
+      cprintf("lastpage 0x%x, next 0x%x\n",lastPage,lastPage->next);
       lastPage = lastPage->next;
     }
     // Search if already exists entry in page directory table/ total pages array
@@ -485,7 +492,7 @@ void addPageToRam(char * addr){
       if (newPageLink->page.page_id == PTE_ADDR((uint) addr)){
         pageFound = 1;
         break;
-      }   
+      } 
       index++;
     } 
     // If entry doesn't exist, add a new page to array
@@ -510,6 +517,7 @@ void addPageToRam(char * addr){
   newPageLink->page.page_id = PTE_ADDR(addr);
   newPageLink->page.state = IN_MEMORY;
   newPageLink->page.offset_in_file = -1;
+  newPageLink->page.shiftCounter = (SELECTION == LAPA) ? 0xFFFFFFFF : 0;
   // Update array of pages
   //myproc()->paging_meta_data[page_array_index] = *pageInArray;
   myproc()->num_pages_ram++;   
@@ -517,6 +525,7 @@ void addPageToRam(char * addr){
 
 // moves a page from RAM to the swap file
 int moveToDisk(struct page_link *toSwap){
+  cprintf("disk\n");
 
   // Check if should use the system global pgdir
   pde_t * pgdir = (global_pgdir_flag == 1) ? global_pgdir : myproc()->pgdir;
@@ -750,7 +759,7 @@ swapPages(uint addr){
 // chooses a page to swap out of RAM according to the current selection of page replacement schemes
 struct page_link* choosePageToSwap(){
   struct page_link *page_link = myproc()->page_list_head_ram;
-  //struct page_link *tmp;
+  struct page_link *tmp;
   int found = 0;
 
   // Check if should use the system global pgdir
@@ -763,9 +772,34 @@ struct page_link* choosePageToSwap(){
 
   // at the end of the Switch-Case, page_link holds the page to swap out
   switch(SELECTION){
-    case(SCFIFO):   // Last In First Out: last page_link in the list will swap out
-      while (page_link->next != 0){
-        page_link = page_link->next;
+    case(NFUA):
+      tmp = myproc()->page_list_head_ram;
+      int shiftCounter = tmp->page.shiftCounter;
+      while(tmp->next != 0){
+        tmp = tmp->next;
+        int shiftCounter = tmp->page.shiftCounter;
+        if(shiftCounter < page_link->page.shiftCounter){
+          page_link = tmp;
+        }
+      }
+      break;
+    case(LAPA):
+      // Find least accessed page to swap out
+      tmp = myproc()->page_list_head_ram;
+      int shiftCounter2 = tmp->page.shiftCounter;
+      int min_number_of_ones = numOfOnes(shiftCounter); 
+      while(tmp->next != 0){
+        tmp = tmp->next;
+        shiftCounter2 = tmp->page.shiftCounter;
+        int current_numOfOnes = numOfOnes(shiftCounter2);
+        if (current_numOfOnes < min_number_of_ones){
+          page_link = tmp;
+          min_number_of_ones = current_numOfOnes;
+        }
+        else if((current_numOfOnes == min_number_of_ones) && (shiftCounter2 < page_link->page.shiftCounter)){
+          page_link = tmp;
+          min_number_of_ones = current_numOfOnes;
+        }
       }
       break;
     // According to the order in which the pages were created and the status of the PTE_A (accessed/reference bit) flag of the page table entry 
@@ -786,21 +820,9 @@ struct page_link* choosePageToSwap(){
          }
       }
       break;
-      // case(LAP):
-
-      //     // Find least accessed page to swap out
-      //     tmp = proc->mem_pages_head;
-      //     int minimalAccessed = tmp->pg.num_times_accessed;
-      //     while (tmp->next != 0)
-      //     {
-      //       tmp = tmp->next;
-      //       if (tmp->pg.num_times_accessed < minimalAccessed)
-      //       {
-      //         pageToRemove = tmp;
-      //         minimalAccessed = tmp->pg.num_times_accessed;
-      //       }
-      //     }
-      //     break;
+    case(AQ):
+      page_link = myproc()->page_list_head_ram;
+      break;  
   }
   return page_link;
 }
@@ -818,13 +840,52 @@ is_PTE_A(pde_t *pgdir, char *virtualAddr){
 }
 
 void
-PTE_A_off(pde_t *pgdir, char *virtualAddr)
-{
+PTE_A_off(pde_t *pgdir, char *virtualAddr){
   pte_t *pte;
   pte = walkpgdir(pgdir, virtualAddr, 0);
   if(pte == 0)
     panic("PTE_A_off: fail");
   *pte = *pte * (~PTE_A);
+}
+
+uint
+numOfOnes(uint shiftCounter){
+  int i = 0, counter = 0;
+  while(i < 32){
+    if((shiftCounter & 1) > 0 ){
+      counter ++;
+    }
+    shiftCounter >>= 1;
+    i++;
+  }
+  return counter;
+}
+
+void
+switchQueueAQ(pde_t *pgdir, char *virtualAddr){
+  struct page_link *page_link = myproc()->page_list_head_ram;
+  struct page_link *tmp;
+  while(page_link != 0 && page_link->next != 0){
+    if(is_PTE_A(pgdir, virtualAddr) > 0){
+      tmp = page_link->next;
+      page_link->next = tmp->next;
+      tmp->next = page_link;
+      tmp->next->prev = tmp;
+      tmp->prev = page_link;
+    }
+    page_link = page_link->next;
+  }
+}
+
+void print_list(){
+  cprintf("pid: %d in ram: %d ",myproc()->pid,myproc()->num_pages_ram );
+  struct page_link *tmp = myproc()->page_list_head_ram;
+  while(tmp!=0){
+    cprintf("(%x)",tmp);
+    cprintf("<>%x<> => ",tmp->page.page_id);
+    tmp=tmp->next;
+  }
+  cprintf("null\n");
 }
 
 //ToDo:

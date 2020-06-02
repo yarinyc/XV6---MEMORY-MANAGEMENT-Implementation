@@ -197,6 +197,8 @@ int             copyout(pde_t*, uint, void*, uint);
 void            clearpteu(pde_t *pgdir, char *uva);
 
 pte_t* walkpgdir_aux(pde_t *pgdir, const void *va, int alloc);
+uint is_PTE_A(pde_t *pgdir, char *virtualAddr);
+void PTE_A_off(pde_t *pgdir, char *virtualAddr);
 
 // number of elements in fixed-size array
 #define NELEM(x) (sizeof(x)/sizeof((x)[0]))
