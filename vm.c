@@ -270,6 +270,7 @@ allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
       }
     }
     mem = kalloc();
+    //cprintf("pid: %d kalloc\n",myproc()->pid);
     if(mem == 0){
       cprintf("allocuvm out of memory\n");
       deallocuvm(pgdir, newsz, oldsz);
@@ -282,7 +283,7 @@ allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
       kfree(mem);
       return 0;
     }
-    if (SELECTION != NONE){
+    if ((SELECTION != NONE) && (myproc()->pid>2)){
       addPageToRam((char *)a);  // Add the new page to Ram
     }
   }
@@ -296,6 +297,7 @@ allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
 int
 deallocuvm(pde_t *pgdir, uint oldsz, uint newsz)
 {
+  
   pte_t *pte;
   uint a, pa;
   int pageFound;
@@ -317,7 +319,7 @@ deallocuvm(pde_t *pgdir, uint oldsz, uint newsz)
       char *v = P2V(pa);
       kfree(v);
       *pte = 0;
-      if (SELECTION != NONE){ //if paging in on
+      if ((SELECTION != NONE) && (myproc()->pgdir == pgdir)){ //if paging in on
         for (page_link = &myproc()->pages_meta_data[0]; page_link < &myproc()->pages_meta_data[MAX_TOTAL_PAGES]; page_link++){
           if (page_link->page.page_id == a){
             pageFound = 1;
@@ -329,9 +331,9 @@ deallocuvm(pde_t *pgdir, uint oldsz, uint newsz)
         }
       }
     }
-    else if((SELECTION != NONE) && (*pte & PTE_PG)){ // if paging is on and page is in the swap file
-      //uint page_id = PTE_ADDR((uint) a);
-      uint page_id = a;
+    else if((SELECTION != NONE) && (*pte & PTE_PG) && (myproc()->pgdir == pgdir)){ // if paging is on and page is in the swap file
+      uint page_id = PTE_ADDR((uint) a);
+      //uint page_id = a;
       for (page_link = &myproc()->pages_meta_data[0]; page_link < &myproc()->pages_meta_data[MAX_TOTAL_PAGES]; page_link++){
         if (page_link->page.page_id == page_id){
           pageFound = 1;
@@ -471,24 +473,26 @@ copyout(pde_t *pgdir, uint va, void *p, uint len)
 
 //add a new page to the RAM list (also allocates space in the page_link array)
 void addPageToRam(char * addr){
-  cprintf("%d\n", addr);
+  //cprintf("%d\n", addr);
+  // if(myproc()->pid>2)
+  //   print_list();
   struct page_link *lastPage = myproc()->page_list_head_ram;
   struct page_link *newPageLink = 0;
   int index = 0;
   int pageFound = 0;
   // if page_list_head_ram is null then set it's virtual address to pages_meta_data[0]
-  if (!lastPage){
-      newPageLink = &myproc()->pages_meta_data[0];
+  if (lastPage == 0){
+      newPageLink = &(myproc()->pages_meta_data[0]);
       myproc()->page_list_head_ram = newPageLink;
   }
   // Search for last link in Ram pages list
   else{
     while(lastPage->next != 0){
-      cprintf("lastpage 0x%x, next 0x%x\n",lastPage,lastPage->next);
+      //cprintf("lastpage 0x%x, next 0x%x\n",lastPage,lastPage->next);
       lastPage = lastPage->next;
     }
     // Search if already exists entry in page directory table/ total pages array
-    for(newPageLink = &myproc()->pages_meta_data[0]; newPageLink < &myproc()->pages_meta_data[MAX_TOTAL_PAGES]; newPageLink++){
+    for(newPageLink = &(myproc()->pages_meta_data[0]); newPageLink < &(myproc()->pages_meta_data[MAX_TOTAL_PAGES]); newPageLink++){
       if (newPageLink->page.page_id == PTE_ADDR((uint) addr)){
         pageFound = 1;
         break;
@@ -499,7 +503,7 @@ void addPageToRam(char * addr){
     if (!pageFound){
       index = 0;
       //searching for a place in the array that is unused
-      for(newPageLink = &myproc()->pages_meta_data[0]; newPageLink < &myproc()->pages_meta_data[MAX_TOTAL_PAGES]; newPageLink++){
+      for(newPageLink = &(myproc()->pages_meta_data[0]); newPageLink < &(myproc()->pages_meta_data[MAX_TOTAL_PAGES]); newPageLink++){
         if(newPageLink->page.state == NOT_USED) 
         {
           break;
@@ -510,22 +514,23 @@ void addPageToRam(char * addr){
     //index now contains the place in the array that should contain the new page
     lastPage->next = newPageLink;
     newPageLink->prev = lastPage; 
-    //proc->paging_meta_data[tailPage->pg.pages_array_index] = *tailPage;
+    //myproc()->pages_meta_data[lastPage->page.index] = *lastPage;
   }
   // Initialize page struct fields
   newPageLink->next = 0;
   newPageLink->page.page_id = PTE_ADDR(addr);
+  newPageLink->page.index = index;
   newPageLink->page.state = IN_MEMORY;
   newPageLink->page.offset_in_file = -1;
   newPageLink->page.shiftCounter = (SELECTION == LAPA) ? 0xFFFFFFFF : 0;
   // Update array of pages
-  //myproc()->paging_meta_data[page_array_index] = *pageInArray;
+  //myproc()->pages_meta_data[index] = *newPageLink;
   myproc()->num_pages_ram++;   
 }
 
 // moves a page from RAM to the swap file
 int moveToDisk(struct page_link *toSwap){
-  cprintf("disk\n");
+  // cprintf("disk\n");
 
   // Check if should use the system global pgdir
   pde_t * pgdir = (global_pgdir_flag == 1) ? global_pgdir : myproc()->pgdir;
@@ -845,7 +850,7 @@ PTE_A_off(pde_t *pgdir, char *virtualAddr){
   pte = walkpgdir(pgdir, virtualAddr, 0);
   if(pte == 0)
     panic("PTE_A_off: fail");
-  *pte = *pte * (~PTE_A);
+  *pte = *pte & (~PTE_A);
 }
 
 uint
@@ -881,8 +886,8 @@ void print_list(){
   cprintf("pid: %d in ram: %d ",myproc()->pid,myproc()->num_pages_ram );
   struct page_link *tmp = myproc()->page_list_head_ram;
   while(tmp!=0){
-    cprintf("(%x)",tmp);
-    cprintf("<>%x<> => ",tmp->page.page_id);
+    cprintf("(0x%x)",tmp);
+    cprintf("<>0x%x<> => ",tmp->page.page_id);
     tmp=tmp->next;
   }
   cprintf("null\n");

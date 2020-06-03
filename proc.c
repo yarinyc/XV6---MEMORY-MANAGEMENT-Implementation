@@ -115,8 +115,9 @@ found:
   p->context->eip = (uint)forkret;
 
   // TASK 1.1: init pages_meta_data array
-  if (SELECTION != NONE){
+  if (SELECTION != NONE && p->pid>2){
     init_meta_data(p);
+    createSwapFile(p);
   }
 
   return p;
@@ -213,6 +214,7 @@ fork(void)
   if (curproc && (SELECTION != NONE) && (curproc->pid > 2)){
     deepCopyProc(curproc, np);
   }
+
 
   for(i = 0; i < NOFILE; i++)
     if(curproc->ofile[i])
@@ -559,6 +561,7 @@ void init_meta_data(struct proc *p){
     p->pages_meta_data[i].page.page_id = 0xFFFFFFFF;
     p->pages_meta_data[i].page.offset_in_file = -1;
     p->pages_meta_data[i].page.state = NOT_USED;
+    p->pages_meta_data[i].page.index = i;
     p->pages_meta_data[i].next = 0;
     p->pages_meta_data[i].prev = 0;
     if(SELECTION == NFUA){
@@ -572,9 +575,8 @@ void init_meta_data(struct proc *p){
 
 void deepCopyProc(struct proc* father, struct proc* child){
   uint offset = 0;
+  char buffer[PGSIZE];
   if(father->swapFile != 0){
-    char buffer[PGSIZE];
-    cprintf("\nCopying contents of father process's %d swap file into child's process %d swap file...\n\n", father->pid, child->pid);
     if(child->swapFile == 0){
       createSwapFile(child);
     }
@@ -588,17 +590,22 @@ void deepCopyProc(struct proc* father, struct proc* child){
     }
   }
   // Update next and prev of child RAM list
-  for(int i = 0; i < MAX_TOTAL_PAGES; i++){
+  for(int i = 0; i < MAX_TOTAL_PAGES; i++){ 
     child->pages_meta_data[i].page = father->pages_meta_data[i].page;
     if(father->pages_meta_data[i].prev != 0){
-      child->pages_meta_data[i].prev = father->pages_meta_data[i].prev;
+      uint indexPrev = father->pages_meta_data[i].prev->page.index;
+      child->pages_meta_data[i].prev = &child->pages_meta_data[indexPrev];
     }
     if(father->pages_meta_data[i].next != 0){
-      child->pages_meta_data[i].next = father->pages_meta_data[i].next;
+      uint indexNext = father->pages_meta_data[i].next->page.index;
+      child->pages_meta_data[i].next = &child->pages_meta_data[indexNext];
     }
   }
 
-  child->page_list_head_ram = father->page_list_head_ram;
+  if(father->page_list_head_ram != 0){
+    child->page_list_head_ram = &(child->pages_meta_data[father->page_list_head_ram->page.index]);
+    //child->page_list_head_ram = father->page_list_head_ram;
+  }
   child->num_pages_disk = father->num_pages_disk;
   child->num_pages_ram = father->num_pages_ram;
 }

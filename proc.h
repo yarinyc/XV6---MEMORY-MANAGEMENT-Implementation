@@ -47,10 +47,11 @@ enum procstate { UNUSED, EMBRYO, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 enum pagestate { NOT_USED, IN_MEMORY, IN_DISK };
 
 struct page_meta_data{
-  uint page_id;
+  uint page_id;             //virtual address of the start of the page
   enum pagestate state;
-  uint offset_in_file;
-  uint shiftCounter;
+  uint offset_in_file;      //ofset of the page in the swap file
+  uint shiftCounter;        //aging counter for NFUA/LAPA
+  uint index;               //the page's index in the page array
 };
 
 // Linked list for pages currently in the physical memory

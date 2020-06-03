@@ -6,24 +6,37 @@
 
 int
 main(int argc, char *argv[]){
-//   char array[4096];
-//   //stack check
-//   for(int i= 0; i< PGSIZE; i+=1000){
-//       array[i] = 'a';
-//       printf(1, "%d\n",array[i]);
-//   }
-  //heap check 
-char * Fmem[15];
-for (int i = 0; i < 15 - 3; i++)
-{
-    printf(1, "ghfghhfg\n");
-    Fmem[i] = sbrk(PGSIZE);
-    printf(1, "after\n");
-    *Fmem[i] = i;
-}
- 
-//   for(int i= 0; i< 4*PGSIZE; i+=PGSIZE){
-//       *(adr + i) = i;
-//   }
+  int i;
+    char * Fmem[32];
+    char arr[3*PGSIZE];
+    arr[0]='b';
+    arr[2*PGSIZE+200] = 'a';
+    printf(1,"%d\n",arr[2*PGSIZE+200]);
+
+    printf(1,"\n\n***************   myMemTest : START  ***************\n\n"); 
+    
+    //test for access to ram 
+    // for (i = 0; i < 16 - 3; i++)
+    // {
+    //     Fmem[i] = sbrk(PGSIZE);
+    //     *Fmem[i] = i;
+    //     printf(1, "page value: %d\n", *Fmem[i]);
+    // }
+    // test swap page
+    for (i = 0; i < 33 - 3; i++)
+    {
+        Fmem[i] = sbrk(PGSIZE);
+        *Fmem[i] = i;
+        printf(1, "page valeu: %d, address: %d \n", *Fmem[i], &Fmem[i]);
+    }
+
+    // for (i = 100; i < 120; i++)
+    // {
+    //     *Fmem[(i % 3)] = i;
+    //     printf(1, "*Fmem[%d] was accessed in tick %d\n", i % 3, uptime());
+    // }
+
+
   printf(1,"done\n");
+  exit();
 }
