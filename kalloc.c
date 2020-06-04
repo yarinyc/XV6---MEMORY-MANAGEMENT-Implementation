@@ -13,6 +13,8 @@ void freerange(void *vstart, void *vend);
 extern char end[]; // first address after kernel loaded from ELF file
                    // defined by the kernel linker script in kernel.ld
 
+struct gloabl_meta_data gloabl_memory_meta_data; //task 4: export this variable so it's global in the system
+
 struct run {
   struct run *next;
 };
@@ -34,12 +36,14 @@ kinit1(void *vstart, void *vend)
   initlock(&kmem.lock, "kmem");
   kmem.use_lock = 0;
   freerange(vstart, vend);
+  gloabl_memory_meta_data.total_system_pages = ((PGROUNDDOWN((uint)vend))-(PGROUNDUP((uint)vstart)))/PGSIZE;
 }
 
 void
 kinit2(void *vstart, void *vend)
 {
   freerange(vstart, vend);
+  gloabl_memory_meta_data.total_system_pages += ((PGROUNDDOWN((uint)vend))-(PGROUNDUP((uint)vstart)))/PGSIZE;
   kmem.use_lock = 1;
 }
 
@@ -72,6 +76,7 @@ kfree(char *v)
   r = (struct run*)v;
   r->next = kmem.freelist;
   kmem.freelist = r;
+  gloabl_memory_meta_data.system_free_pages++;
   if(kmem.use_lock)
     release(&kmem.lock);
 }
@@ -83,12 +88,13 @@ char*
 kalloc(void)
 {
   struct run *r;
-
   if(kmem.use_lock)
     acquire(&kmem.lock);
   r = kmem.freelist;
-  if(r)
+  if(r){
     kmem.freelist = r->next;
+    gloabl_memory_meta_data.system_free_pages--;
+  }
   if(kmem.use_lock)
     release(&kmem.lock);
   return (char*)r;

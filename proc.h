@@ -22,6 +22,11 @@ extern int ncpu;
 #define AQ 4
 #define NONE 5
 
+#define VERBOSE_TRUE 1
+#define VERBOSE_FALSE 0
+
+
+
 //PAGEBREAK: 17
 // Saved registers for kernel context switches.
 // Don't need to save all the segment registers (%cs, etc),
@@ -83,7 +88,9 @@ struct proc {
   struct page_link *page_list_head_ram; //head of linked list of pages in RAM
   uint num_pages_ram;
   uint num_pages_disk;
-  char available_Offsets[17];       // array of avilable file offset 
+  char available_Offsets[17];       // array of avilable file offset
+  uint num_of_page_faults;
+  uint num_of_page_outs;
 };
 
 void init_meta_data(struct proc *p);

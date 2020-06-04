@@ -15,6 +15,7 @@ struct spinlock tickslock;
 uint ticks;
 
 int swapPages(uint addr);
+void switchQueueAQ(pde_t *pgdir);
 
 void
 tvinit(void)
@@ -46,6 +47,9 @@ void update_meta_data(void){
       }
       tmp = tmp->next;
     }
+  }
+  if (SELECTION == AQ){
+    switchQueueAQ(myproc()->pgdir); //update the AQ
   }
 }
 
@@ -100,10 +104,11 @@ trap(struct trapframe *tf)
       cprintf("T_PGFLT: SELECTION=NONE || init || shell\n");
       goto pg_fault;
     }
+    myproc()->num_of_page_faults++;
     //myproc()->number_of_pgFLTS++;    // Increment number of page faults counter
     uint pg_fault_addr = PGROUNDDOWN(rcr2());  // get the address that caused the page fault from rcr2 register
     pte_t *pte = walkpgdir_aux(myproc()->pgdir, (char*)pg_fault_addr, 0);
-    cprintf("REACHED PGFLT! Process %d Looking for entry: 0x%x  pte: %x\n", myproc()->pid, pg_fault_addr,pte);
+    cprintf("REACHED PGFLT! Process %d Looking for entry: 0x%x\n", myproc()->pid, pg_fault_addr);
     if ((*pte & PTE_PG) == 0){
       //printPageArray();
       goto pg_fault;      // segmentation fault: page was not found in Ram or DISK
@@ -113,7 +118,7 @@ trap(struct trapframe *tf)
       // Swap pages - get the required page from the swap file and write a chosen page by policy from physical memory to the swap file instead
       if (swapPages(pg_fault_addr) == -1){
         // swapPages didn't find the page in the swap file --> ERROR, shouldn't reach here because we check PTE_PG bit
-        cprintf("T_PGFLT: 'swap-pages' func didnt find the address: 0x%x in the swap file\n",pg_fault_addr);
+        cprintf("T_PGFLT error: 'swap-pages' func didnt find the address: 0x%x in the swap file\n",pg_fault_addr);
         goto pg_fault;
       }
     }

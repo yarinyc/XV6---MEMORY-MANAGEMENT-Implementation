@@ -214,6 +214,8 @@ fork(void)
   if (curproc && (SELECTION != NONE) && (curproc->pid > 2)){
     deepCopyProc(curproc, np);
   }
+  np->num_of_page_faults = 0;
+  np->num_of_page_outs = 0;
 
 
   for(i = 0; i < NOFILE; i++)
@@ -281,6 +283,13 @@ exit(void)
 
   // Jump into the scheduler, never to return.
   curproc->state = ZOMBIE;
+
+  // task 4: Verbose Print
+  if ((VERBOSE_PRINT == VERBOSE_TRUE) /*&& ((curproc->tf->cs&3) == DPL_USER)*/){
+    cprintf("%d %s %s allocated memory pages: %d paged out: %d page faults: %d total number of paged out: %d ", curproc->pid, "ZOMBIE", curproc->name, curproc->num_pages_ram, curproc->num_pages_disk, curproc->num_of_page_faults, curproc->num_of_page_outs);
+    cprintf("\nnumber of free page frames in the system: %d / %d\n\n", gloabl_memory_meta_data.system_free_pages, gloabl_memory_meta_data.total_system_pages);
+    cprintf("\n");
+  }
   sched();
   panic("zombie exit");
 }
@@ -541,14 +550,17 @@ procdump(void)
       state = states[p->state];
     else
       state = "???";
-    cprintf("%d %s %s", p->pid, state, p->name);
+    cprintf("%d %s %s allocated memory pages: %d paged out: %d page faults: %d total number of paged out: %d ", p->pid, state, p->name,p->num_pages_ram,p->num_pages_disk,p->num_of_page_faults,p->num_of_page_outs);
     if(p->state == SLEEPING){
       getcallerpcs((uint*)p->context->ebp+2, pc);
       for(i=0; i<10 && pc[i] != 0; i++)
         cprintf(" %p", pc[i]);
     }
     cprintf("\n");
+    // number of free page frames in the system:
+    cprintf("number of free page frames in the system: %d / %d\n\n", gloabl_memory_meta_data.system_free_pages, gloabl_memory_meta_data.total_system_pages);
   }
+
 }
 
 void init_meta_data(struct proc *p){
@@ -556,6 +568,8 @@ void init_meta_data(struct proc *p){
   p->page_list_head_ram = 0;
   p->num_pages_disk = 0;
   p->num_pages_ram = 0;
+  p->num_of_page_faults = 0;
+  p->num_of_page_outs = 0;
   memset(&p->available_Offsets,0,17); // init offset array with 0
   for (int i = 0; i < MAX_TOTAL_PAGES; i++){
     p->pages_meta_data[i].page.page_id = 0xFFFFFFFF;

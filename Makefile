@@ -54,6 +54,10 @@ ifndef SELECTION
 	SELECTION = SCFIFO
 endif
 
+ifndef VERBOSE_PRINT
+	VERBOSE_PRINT = VERBOSE_FALSE
+endif
+
 # If the makefile can't find QEMU, specify its path here
 # QEMU = qemu-system-i386
 
@@ -83,6 +87,7 @@ OBJDUMP = $(TOOLPREFIX)objdump
 CFLAGS = -fno-pic -static -fno-builtin -fno-strict-aliasing -O2 -Wall -MD -ggdb -m32 -Werror -fno-omit-frame-pointer
 CFLAGS += $(shell $(CC) -fno-stack-protector -E -x c /dev/null >/dev/null 2>&1 && echo -fno-stack-protector)
 CFLAGS += -DSELECTION=$(SELECTION)
+CFLAGS += -DVERBOSE_PRINT=$(VERBOSE_PRINT)
 ASFLAGS = -m32 -gdwarf-2 -Wa,-divide
 # FreeBSD ld wants ``elf_i386_fbsd''
 LDFLAGS += -m $(shell $(LD) -V | grep elf_i386 2>/dev/null | head -n 1)
@@ -223,7 +228,7 @@ QEMUGDB = $(shell if $(QEMU) -help | grep -q '^-gdb'; \
 	then echo "-gdb tcp::$(GDBPORT)"; \
 	else echo "-s -p $(GDBPORT)"; fi)
 ifndef CPUS
-CPUS := 1
+CPUS := 2
 endif
 QEMUOPTS = -drive file=fs.img,index=1,media=disk,format=raw -drive file=xv6.img,index=0,media=disk,format=raw -smp $(CPUS) -m 512 $(QEMUEXTRA)
 
