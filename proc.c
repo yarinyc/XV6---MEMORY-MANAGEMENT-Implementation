@@ -117,7 +117,7 @@ found:
   // TASK 1.1: init pages_meta_data array
   if (SELECTION != NONE && p->pid>2){
     init_meta_data(p);
-    createSwapFile(p);
+    //createSwapFile(p);
   }
 
   return p;
@@ -195,7 +195,6 @@ fork(void)
   if((np = allocproc()) == 0){
     return -1;
   }
-
   // Copy process state from proc.
   if((np->pgdir = copyuvm(curproc->pgdir, curproc->sz)) == 0){
     kfree(np->kstack);
@@ -207,16 +206,16 @@ fork(void)
   np->parent = curproc;
   *np->tf = *curproc->tf;
 
-  // Clear %eax so that fork returns 0 in the child.
-  np->tf->eax = 0;
-
   // Copy contents of swapFile\list\array from parent to child
   if (curproc && (SELECTION != NONE) && (curproc->pid > 2)){
     deepCopyProc(curproc, np);
   }
+  
   np->num_of_page_faults = 0;
   np->num_of_page_outs = 0;
 
+  // Clear %eax so that fork returns 0 in the child.
+  np->tf->eax = 0;
 
   for(i = 0; i < NOFILE; i++)
     if(curproc->ofile[i])
@@ -285,9 +284,9 @@ exit(void)
   curproc->state = ZOMBIE;
 
   // task 4: Verbose Print
-  if ((VERBOSE_PRINT == VERBOSE_TRUE) /*&& ((curproc->tf->cs&3) == DPL_USER)*/){
-    cprintf("%d %s %s allocated memory pages: %d paged out: %d page faults: %d total number of paged out: %d ", curproc->pid, "ZOMBIE", curproc->name, curproc->num_pages_ram, curproc->num_pages_disk, curproc->num_of_page_faults, curproc->num_of_page_outs);
-    cprintf("\nnumber of free page frames in the system: %d / %d\n\n", gloabl_memory_meta_data.system_free_pages, gloabl_memory_meta_data.total_system_pages);
+  if ((VERBOSE_PRINT == TRUE) /*&& ((curproc->tf->cs&3) == DPL_USER)*/){
+    cprintf("\npid %d %s %s allocated memory pages: %d paged out: %d page faults: %d total number of paged out: %d ", curproc->pid, "ZOMBIE", curproc->name, curproc->num_pages_ram, curproc->num_pages_disk, curproc->num_of_page_faults, curproc->num_of_page_outs);
+    cprintf("\nnumber of free page frames in the system: %d / %d\n", gloabl_memory_meta_data.system_free_pages, gloabl_memory_meta_data.total_system_pages);
     cprintf("\n");
   }
   sched();
@@ -550,16 +549,16 @@ procdump(void)
       state = states[p->state];
     else
       state = "???";
-    cprintf("%d %s %s allocated memory pages: %d paged out: %d page faults: %d total number of paged out: %d ", p->pid, state, p->name,p->num_pages_ram,p->num_pages_disk,p->num_of_page_faults,p->num_of_page_outs);
+    cprintf("\n%d %s %s allocated memory pages: %d paged out: %d page faults: %d total number of paged out: %d ", p->pid, state, p->name,p->num_pages_ram,p->num_pages_disk,p->num_of_page_faults,p->num_of_page_outs);
     if(p->state == SLEEPING){
       getcallerpcs((uint*)p->context->ebp+2, pc);
       for(i=0; i<10 && pc[i] != 0; i++)
         cprintf(" %p", pc[i]);
     }
     cprintf("\n");
-    // number of free page frames in the system:
-    cprintf("number of free page frames in the system: %d / %d\n\n", gloabl_memory_meta_data.system_free_pages, gloabl_memory_meta_data.total_system_pages);
   }
+  // number of free page frames in the system:
+  cprintf("number of free page frames in the system: %d / %d\n\n", gloabl_memory_meta_data.system_free_pages, gloabl_memory_meta_data.total_system_pages);
 
 }
 

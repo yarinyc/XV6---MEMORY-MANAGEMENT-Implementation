@@ -55,7 +55,7 @@ ifndef SELECTION
 endif
 
 ifndef VERBOSE_PRINT
-	VERBOSE_PRINT = VERBOSE_FALSE
+	VERBOSE_PRINT = FALSE
 endif
 
 # If the makefile can't find QEMU, specify its path here
@@ -228,7 +228,7 @@ QEMUGDB = $(shell if $(QEMU) -help | grep -q '^-gdb'; \
 	then echo "-gdb tcp::$(GDBPORT)"; \
 	else echo "-s -p $(GDBPORT)"; fi)
 ifndef CPUS
-CPUS := 2
+CPUS := 1
 endif
 QEMUOPTS = -drive file=fs.img,index=1,media=disk,format=raw -drive file=xv6.img,index=0,media=disk,format=raw -smp $(CPUS) -m 512 $(QEMUEXTRA)
 

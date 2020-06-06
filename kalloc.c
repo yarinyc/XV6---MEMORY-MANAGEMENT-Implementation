@@ -23,6 +23,7 @@ struct {
   struct spinlock lock;
   int use_lock;
   struct run *freelist;
+  //uint referenceCounters[PHYSTOP/PGSIZE];    // reference counter for COW
 } kmem;
 
 // Initialization happens in two phases.
@@ -35,6 +36,7 @@ kinit1(void *vstart, void *vend)
 {
   initlock(&kmem.lock, "kmem");
   kmem.use_lock = 0;
+  //memset(&kmem.referenceCounters,0,(4*(PHYSTOP/PGSIZE))); //set all counters of COW to 0
   freerange(vstart, vend);
   gloabl_memory_meta_data.total_system_pages = ((PGROUNDDOWN((uint)vend))-(PGROUNDUP((uint)vstart)))/PGSIZE;
 }

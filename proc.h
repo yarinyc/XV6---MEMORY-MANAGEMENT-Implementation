@@ -22,8 +22,8 @@ extern int ncpu;
 #define AQ 4
 #define NONE 5
 
-#define VERBOSE_TRUE 1
-#define VERBOSE_FALSE 0
+#define TRUE 1
+#define FALSE 0
 
 
 
@@ -61,9 +61,9 @@ struct page_meta_data{
 
 // Linked list for pages currently in the physical memory
 struct page_link{
-    struct page_meta_data page;              // Link in the list (every link is a page)
-    struct page_link *next;     // Next link in list
-    struct page_link *prev;     // Previous link in list
+    struct page_meta_data page;       // Link in the list (every link is a page)
+    struct page_link *next;           // Next link in list
+    struct page_link *prev;           // Previous link in list
 };
 
 // Per-process state

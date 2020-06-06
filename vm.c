@@ -408,6 +408,7 @@ copyuvm(pde_t *pgdir, uint sz)
 
     pa = PTE_ADDR(*pte);
     flags = PTE_FLAGS(*pte);
+    
     if(*pte & PTE_P){ // page is in RAM
       if((mem = kalloc()) == 0)
         goto bad;
@@ -537,6 +538,7 @@ int moveToDisk(struct page_link *toSwap){
   pde_t * pgdir = (global_pgdir_flag == 1) ? global_pgdir : myproc()->pgdir;
 
   pte_t *pte = walkpgdir(pgdir, (char*)toSwap->page.page_id, 0);
+  //cprintf("page id: 0x%x pte: 0x%x\n",toSwap->page.page_id,*pte);
    // Write page to swap file from page's virtual address
   if (movePageToFile(toSwap) == -1){
     return -1;
@@ -617,7 +619,9 @@ int movePageToFile(struct page_link *pageToWrite){
     panic ("movePageToFile: page doesn't exist\n");   
   }
   if (!(*pte & PTE_P)){
-    panic ("movePageToFile: page isn't present\n"); 
+    print_list();
+    cprintf("pageToWrite: %x 0x%x %d ",pageToWrite->page.page_id, *pte,pageToWrite->page.state);
+    panic ("movePageToFile: page isn't present(2)\n"); 
   }
   uint offset = nextAvOffset(); //get a free offset index in the swap file
   if(offset == -1)
@@ -700,7 +704,6 @@ int getPageFromFile(struct page_link *page_link){
 
   // add page_link the the RAM list
   addPageToList(page_link);
-  cprintf("swtch AQ\n");
 
   // Update array of pages
   // proc->paging_meta_data[tailPage->pg.pages_array_index] = *tailPage;
@@ -735,7 +738,6 @@ swapPages(uint addr){
   struct page_link *page_link_out = choosePageToSwap();  // Choose a page to swap out
   struct page_link *page_link_in;
   int flag = 0;
-  cprintf("swap\n");
   // Look for the required page entry in pages meta data array
   for (page_link_in = &myproc()->pages_meta_data[0]; page_link_in < &myproc()->pages_meta_data[MAX_TOTAL_PAGES]; page_link_in++){
     if (page_link_in->page.page_id == addr){
@@ -752,6 +754,9 @@ swapPages(uint addr){
     // Write page to swap file and read from swap file
     moveToDisk(page_link_out);
   }
+  // pte_t *pte2 = walkpgdir(myproc()->pgdir, (void*)page_link_out->page.page_id,0);
+  // print_list();
+  // cprintf("page_link_out: %x 0x%x %d ",page_link_out->page.page_id, *pte2 ,page_link_out->page.state);
   getPageFromFile(page_link_in);
 
   // Check if should use the system global pgdir
@@ -771,7 +776,6 @@ struct page_link* choosePageToSwap(){
   struct page_link *tmp;
   pte_t *pte;
   int found = 0;
-  cprintf("choosePageToSwap\n");
   // Check if should use the system global pgdir
   pde_t *pgdir = (global_pgdir_flag == 1) ? global_pgdir : myproc()->pgdir;
 
@@ -842,7 +846,6 @@ struct page_link* choosePageToSwap(){
       }
       break;
     case(AQ): //Advancing Queue
-      cprintf("AQ\n");
       page_link = myproc()->page_list_head_ram; // the first page in the list is the first to leave the Advancing Queue
       break;  
   }
@@ -886,6 +889,7 @@ numOfOnes(uint shiftCounter){
 //update the AQ: for each page that it's PTE_A bit is set, swap it with it's preceeding page in the queue
 void
 switchQueueAQ(pde_t *pgdir){
+  // print_list();
   struct page_link *page_link = myproc()->page_list_head_ram;
   struct page_link *nextLink;
   while(page_link != 0 && page_link->next != 0){
@@ -907,7 +911,9 @@ switchQueueAQ(pde_t *pgdir){
           tmp2->prev = page_link;
       }
     }
+    else{
     page_link = page_link->next;
+    }
   }
   PTE_A_off(pgdir, (char*)page_link->page.page_id);
 }
