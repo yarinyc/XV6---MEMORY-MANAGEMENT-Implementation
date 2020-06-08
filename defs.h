@@ -78,6 +78,11 @@ char*           kalloc(void);
 void            kfree(char*);
 void            kinit1(void*, void*);
 void            kinit2(void*, void*);
+void            incrementRef(char *v);
+void            decrementRef(char *v);
+uint            getRef(char *v);
+void            kmemLock(void);
+void            kmemRelease(void);
 
 // kbd.c
 void            kbdintr(void);
@@ -197,6 +202,7 @@ int             copyout(pde_t*, uint, void*, uint);
 void            clearpteu(pde_t *pgdir, char *uva);
 
 pte_t* walkpgdir_aux(pde_t *pgdir, const void *va, int alloc);
+int mappages_aux(pde_t *pgdir, void *va, uint size, uint pa, int perm);
 uint is_PTE_A(pde_t *pgdir, char *virtualAddr);
 void PTE_A_off(pde_t *pgdir, char *virtualAddr);
 

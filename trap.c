@@ -99,17 +99,44 @@ trap(struct trapframe *tf)
     lapiceoi();
     break;
   case T_PGFLT:
-    // If SELECTION is NONE *OR* current proc is shell or init, handle page fault as default xv6
-    if ((SELECTION == NONE) || (myproc()->pid <= 2)){  
-      cprintf("T_PGFLT: SELECTION=NONE || init || shell\n");
-      goto pg_fault;
-    }
     myproc()->num_of_page_faults++;
     uint pg_fault_addr = rcr2();  // get the address that caused the page fault from rcr2 register
     pte_t *pte = walkpgdir_aux(myproc()->pgdir, (char*)pg_fault_addr, 0);
     //cprintf("REACHED PGFLT! Process %d %s Looking for entry: 0x%x pte: %x\n", myproc()->pid, myproc()->name, pg_fault_addr,pte);
-    if ((*pte & PTE_PG) == 0){
-      //printPageArray();
+    
+    // If SELECTION is NONE *OR* current proc is shell or init, handle page fault as default xv6
+    if(!(*pte & PTE_P) && ((SELECTION == NONE) || (myproc()->pid <= 2))){  
+      cprintf("T_PGFLT: SELECTION=NONE / init / shell");
+      goto pg_fault;
+    }
+
+    if(*pte & PTE_P){ //if true then it is a write to a read-only page
+      void *pa = (void*)PTE_ADDR(*pte);
+      if(getRef(P2V(pa)) == 1){ // when there is only one reference we just need to grant write permission
+        *pte = *pte | PTE_W;
+      }
+      else if(getRef((char*)P2V(pa)) > 1){ // when more then 1 reference for the same physical page we need to copy the page
+        char *mem = kalloc();
+        kmemLock();
+        uint flags = PTE_FLAGS(*pte);
+        flags = flags | PTE_W;
+        if(mem == 0){
+          myproc()->killed = 1;
+        }
+        else{ // make a deep copy of this page and grant the current proc write permission
+          memmove(mem, (void*)PGROUNDDOWN(pg_fault_addr), PGSIZE);
+          //mappages_aux(myproc()->pgdir, (void*)PGROUNDDOWN(pg_fault_addr), PGSIZE, V2P(mem), flags);
+          *pte = V2P(mem) | flags;
+          lcr3(V2P(myproc()->pgdir));
+        }
+        kmemRelease();
+        decrementRef((char*)P2V(pa));
+      }
+      else{ //ref==0 
+        goto pg_fault;      // segmentation fault: page was not found in Ram or DISK (in COW probably illegal address)
+      }
+    }
+    else if ((*pte & PTE_PG) == 0){
       goto pg_fault;      // segmentation fault: page was not found in Ram or DISK
     }
     else{

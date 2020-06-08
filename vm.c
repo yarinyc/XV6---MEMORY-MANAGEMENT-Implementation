@@ -102,6 +102,10 @@ mappages(pde_t *pgdir, void *va, uint size, uint pa, int perm)
   return 0;
 }
 
+int mappages_aux(pde_t *pgdir, void *va, uint size, uint pa, int perm){
+  return mappages(pgdir, va, size, pa, perm);
+}
+
 // There is one page table per process, plus one that's used when
 // a CPU is not running any process (kpgdir). The kernel uses the
 // current process's page table during system calls and interrupts;
@@ -391,7 +395,45 @@ clearpteu(pde_t *pgdir, char *uva)
 // Given a parent process's page table, create a copy
 // of it for a child.
 pde_t*
-copyuvm(pde_t *pgdir, uint sz)
+copyuvm(pde_t *pgdir, uint sz) //COW
+{
+  pde_t *d;
+  pte_t *pte;
+  uint pa, i, flags;
+
+  if((d = setupkvm()) == 0)
+    return 0;
+  for(i = 0; i < sz; i += PGSIZE){
+    if((pte = walkpgdir(pgdir, (void *) i, 0)) == 0)
+      panic("copyuvm: pte should exist");
+    if(!((*pte & PTE_P) || (*pte & PTE_PG))) // page can be also in swap file
+      panic("copyuvm COW: page not present in RAM or swap file");
+
+    pa = PTE_ADDR(*pte);
+
+    *pte = *pte & ~PTE_W;
+    flags = PTE_FLAGS(*pte);
+    
+    if(mappages(d, (void*)i, PGSIZE, pa, flags) < 0) {
+      goto bad;
+    }
+    if(*pte & PTE_P){
+      incrementRef(P2V(pa));
+    }
+  }
+  
+  lcr3(V2P(pgdir));
+
+  return d;
+
+bad:
+  freevm(d);
+  return 0;
+}
+
+
+pde_t*
+copyuvm_no_COW(pde_t *pgdir, uint sz)
 {
   pde_t *d;
   pte_t *pte;

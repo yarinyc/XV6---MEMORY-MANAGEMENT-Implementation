@@ -72,7 +72,6 @@ exec(char *path, char **argv)
     backup_list_head = curproc->page_list_head_ram;
     init_meta_data(curproc);
   }
-
   // Load program into memory.
   sz = 0;
   for(i=0, off=elf.phoff; i<elf.phnum; i++, off+=sizeof(ph)){
@@ -94,7 +93,6 @@ exec(char *path, char **argv)
   iunlockput(ip);
   end_op();
   ip = 0;
-
   // Allocate two pages at the next page boundary.
   // Make the first inaccessible.  Use the second as the user stack.
   sz = PGROUNDUP(sz);

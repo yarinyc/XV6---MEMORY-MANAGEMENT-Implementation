@@ -190,7 +190,6 @@ fork(void)
   int i, pid;
   struct proc *np;
   struct proc *curproc = myproc();
-
   // Allocate process.
   if((np = allocproc()) == 0){
     return -1;
@@ -210,7 +209,7 @@ fork(void)
   if (curproc && (SELECTION != NONE) && (curproc->pid > 2)){
     deepCopyProc(curproc, np);
   }
-  
+
   np->num_of_page_faults = 0;
   np->num_of_page_outs = 0;
 
@@ -367,6 +366,7 @@ scheduler(void)
       // before jumping back to us.
       c->proc = p;
       switchuvm(p);
+
       p->state = RUNNING;
 
       swtch(&(c->scheduler), p->context);
