@@ -117,7 +117,6 @@ found:
   // TASK 1.1: init pages_meta_data array
   if (SELECTION != NONE && p->pid>2){
     init_meta_data(p);
-    //createSwapFile(p);
   }
 
   return p;
@@ -196,6 +195,7 @@ fork(void)
   }
   // Copy process state from proc.
   if((np->pgdir = copyuvm(curproc->pgdir, curproc->sz)) == 0){
+    cprintf("yahellll\n");
     kfree(np->kstack);
     np->kstack = 0;
     np->state = UNUSED;
@@ -283,7 +283,7 @@ exit(void)
   curproc->state = ZOMBIE;
 
   // task 4: Verbose Print
-  if ((VERBOSE_PRINT == TRUE) /*&& ((curproc->tf->cs&3) == DPL_USER)*/){
+  if ((VERBOSE_PRINT == TRUE)){
     cprintf("\npid %d %s %s allocated memory pages: %d paged out: %d page faults: %d total number of paged out: %d ", curproc->pid, "ZOMBIE", curproc->name, curproc->num_pages_ram, curproc->num_pages_disk, curproc->num_of_page_faults, curproc->num_of_page_outs);
     cprintf("\nnumber of free page frames in the system: %d / %d\n", gloabl_memory_meta_data.system_free_pages, gloabl_memory_meta_data.total_system_pages);
     cprintf("\n");
@@ -601,7 +601,9 @@ void deepCopyProc(struct proc* father, struct proc* child){
       offset+= PGSIZE;
       memset(buffer, 0, PGSIZE);
     }
+    memmove(&child->available_Offsets, &father->available_Offsets, 17);
   }
+  
   // Update next and prev of child RAM list
   for(int i = 0; i < MAX_TOTAL_PAGES; i++){ 
     child->pages_meta_data[i].page = father->pages_meta_data[i].page;
@@ -617,64 +619,8 @@ void deepCopyProc(struct proc* father, struct proc* child){
 
   if(father->page_list_head_ram != 0){
     child->page_list_head_ram = &(child->pages_meta_data[father->page_list_head_ram->page.index]);
-    //child->page_list_head_ram = father->page_list_head_ram;
   }
   child->num_pages_disk = father->num_pages_disk;
   child->num_pages_ram = father->num_pages_ram;
-}
-
-void 
-printList(void)
-{
-if ((SELECTION == NONE) || (myproc()->pid <= 2))
-{
-  return;
-}
-struct page_link * tmp = myproc()->page_list_head_ram;
-pte_t *pte = 0;
-cprintf("\n***** Printing List for process %d *****\n\n", myproc()->pid);
-while(tmp != 0)
-{
-  if (tmp->next != 0) {
-
-  if (SELECTION == LAPA){
-    cprintf("%d (accss: %d)---> ", tmp->page.page_id); 
-  }
-  else if (SELECTION == SCFIFO) {  
-      pte = walkpgdir_aux(myproc()->pgdir, (void *) tmp->page.page_id, 0);
-
-      if ((*pte & PTE_A) > 0){
-        cprintf("%d (on) ---> ", tmp->page.page_id); 
-      }
-      else {
-        cprintf("%d (off) ---> ",tmp->page.page_id); 
-      } 
-    }
-    else {
-      cprintf("%d ---> ", tmp->page.page_id); 
-    }
-  }
-
-else {
-    if (SELECTION == LAPA) {
-       //cprintf("%d (accss: %d)\n", tmp->page.page_id); 
-    }
-    else if (SELECTION == SCFIFO) {  
-    pte = walkpgdir_aux(myproc()->pgdir, (void *) tmp->page.page_id, 0);
-
-    if ((*pte & PTE_A) > 0){
-      cprintf("%d (on)\n", tmp->page.page_id); 
-    }
-    else {
-      cprintf("%d (off)\n", tmp->page.page_id); 
-    }
-  }
-        else {
-    cprintf("%d\n", tmp->page.page_id); 
-  }
-}
-tmp = tmp->next;
-}
-cprintf("\n***** Finished Printing List for process %d *****\n\n", myproc()->pid);
 }
 

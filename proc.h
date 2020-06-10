@@ -21,6 +21,7 @@ extern int ncpu;
 #define SCFIFO 3
 #define AQ 4
 #define NONE 5
+#define LIFO 6
 
 #define TRUE 1
 #define FALSE 0
@@ -94,7 +95,6 @@ struct proc {
 };
 
 void init_meta_data(struct proc *p);
-void printList(void);
 
 // Process memory is laid out contiguously, low addresses first:
 //   text

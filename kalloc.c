@@ -47,8 +47,6 @@ kinit2(void *vstart, void *vend)
   gloabl_memory_meta_data.total_system_pages += ((PGROUNDDOWN((uint)vend))-(PGROUNDUP((uint)vstart)))/PGSIZE;
   kmem.use_lock = 1;
   gloabl_memory_meta_data.system_free_pages = gloabl_memory_meta_data.total_system_pages;
-  //memset(kmem.referenceCounters,0,(4*(PHYSTOP/PGSIZE))); //set all counters of COW to 0
-
 }
 
 void
@@ -68,28 +66,32 @@ void
 kfree(char *v)
 {
   struct run *r;
-  if((uint)v % PGSIZE || v < end || V2P(v) >= PHYSTOP)
-    panic("kfree");
-  if(kmem.use_lock == 0)
-    goto init_mem;
-  if(getRef(v) == 0)
-    panic("kfree: ref is 0 and tried to kfree v");
-  decrementRef(v);
+  if(((uint)v % PGSIZE) || (v < end) || (V2P(v) >= PHYSTOP)){
+    panic("kfree"); 
+    }
 
-  if(getRef(v) == 0){ //free physical page
-    // Fill with junk to catch dangling refs.
-    init_mem:
-    memset(v, 1, PGSIZE);
-
-    if(kmem.use_lock)
+    if(kmem.use_lock){
       acquire(&kmem.lock);
-    r = (struct run*)v;
-    r->next = kmem.freelist;
-    kmem.freelist = r;
-    gloabl_memory_meta_data.system_free_pages++;
+    }
+
+    if(kmem.use_lock && kmem.referenceCounters[(V2P(v) / PGSIZE)] == 0){
+      cprintf("bad address 0x%x\n",v);
+      panic("kfree: ref is 0 and tried to kfree v");
+    }
+
+
+    if(kmem.referenceCounters[(V2P(v) / PGSIZE)] > 0)
+        kmem.referenceCounters[(V2P(v) / PGSIZE)]--;
+    if(kmem.referenceCounters[(V2P(v) / PGSIZE)] == 0){
+      memset(v, 1, PGSIZE);
+      r = (struct run*)v;
+      r->next = kmem.freelist;
+      kmem.freelist = r;
+      gloabl_memory_meta_data.system_free_pages++;
+    }
+
     if(kmem.use_lock)
       release(&kmem.lock);
-  }
 }
    
 // Allocate one 4096-byte page of physical memory.
@@ -100,8 +102,9 @@ kalloc(void)
 {
   struct run *r;
   
-  if(kmem.use_lock)
+  if(kmem.use_lock){
     acquire(&kmem.lock);
+  }
   r = kmem.freelist;
   if(r){
     kmem.freelist = r->next;
@@ -116,30 +119,38 @@ kalloc(void)
 // increase the reference counter by 1 to the physical page pointed to by kernel virtual address v
 void
 incrementRef(char *v){
-  uint *counter;
-  acquire(&kmem.lock);
-  counter = &kmem.referenceCounters[(V2P(v) / PGSIZE)];
-  *counter += 1;
-  release(&kmem.lock);
+  if(V2P(v) < (uint)V2P(end) || V2P(v) >= PHYSTOP)
+    panic("incrementRef");
+
+  if(kmem.use_lock)
+    acquire(&kmem.lock);
+  kmem.referenceCounters[(V2P(v) / PGSIZE)]++;
+  if(kmem.use_lock)
+    release(&kmem.lock);
 }
 
 // decrease the reference counter by 1 to the physical page pointed to by kernel virtual address v
 void
 decrementRef(char *v){
-  uint *counter;
-  acquire(&kmem.lock);
-  counter = &kmem.referenceCounters[(V2P(v) / PGSIZE)];
-  *counter -= 1;
-  release(&kmem.lock);
+  if(V2P(v) < (uint)V2P(end) || V2P(v) >= PHYSTOP)
+    panic("decrementRef");
+
+  if(kmem.use_lock)
+    acquire(&kmem.lock);
+  kmem.referenceCounters[(V2P(v) / PGSIZE)]--;
+  if(kmem.use_lock)
+    release(&kmem.lock);
 }
 
 // returns the current reference counter to the physical page pointed to by kernel virtual address v
 uint
 getRef(char *v){
   uint res;
-  acquire(&kmem.lock);
+  if(kmem.use_lock)
+    acquire(&kmem.lock);
   res = kmem.referenceCounters[(V2P(v) / PGSIZE)];
-  release(&kmem.lock);
+  if(kmem.use_lock)
+    release(&kmem.lock);
   return res;
 }
 
