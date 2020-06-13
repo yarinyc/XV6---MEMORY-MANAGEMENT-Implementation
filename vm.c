@@ -31,8 +31,6 @@ uint is_PTE_A(pde_t *pgdir, char *virtualAddr);
 void PTE_A_off(pde_t *pgdir, char *virtualAddr);
 void switchQueueAQ(pde_t *pgdir);
 
-void print_list(void);
-
 // Set up CPU's kernel segment descriptors.
 // Run once on entry on each CPU.
 void
@@ -320,9 +318,12 @@ deallocuvm(pde_t *pgdir, uint oldsz, uint newsz)
       if(pa == 0)
         panic("kfree (deallocuvm)");
       char *v = P2V(pa);
+      // cprintf("deallocuvm: v 0x%x pte: 0x%x *pte: 0x%x\n",v,pte,*pte);
+      if(v==(char*)0x103000)
+        break;
       kfree(v);
       *pte = 0;
-      if ((SELECTION != NONE) && (myproc()->pgdir == pgdir)){ //if paging in on
+      if ((SELECTION != NONE) && (myproc()->pgdir == pgdir)){ //if paging is on
         for (page_link = &myproc()->pages_meta_data[0]; page_link < &myproc()->pages_meta_data[MAX_TOTAL_PAGES]; page_link++){
           if (page_link->page.page_id == a){
             pageFound = 1;
@@ -372,6 +373,7 @@ freevm(pde_t *pgdir)
       kfree(v);
     }
   }
+  global_pgdir = 0;
   global_pgdir_flag = 0;
   kfree((char*)pgdir);
 }
@@ -566,10 +568,12 @@ void addPageToRam(char * addr){
 
 // moves a page from RAM to the swap file
 int moveToDisk(struct page_link *toSwap){
+
   // Check if should use the system global pgdir
   pde_t * pgdir = (global_pgdir_flag == 1) ? global_pgdir : myproc()->pgdir;
 
   pte_t *pte = walkpgdir(pgdir, (char*)toSwap->page.page_id, 0);
+  //cprintf("page id: 0x%x pte: 0x%x\n",toSwap->page.page_id,*pte);
    // Write page to swap file from page's virtual address
   if (movePageToFile(toSwap) == -1){
     return -1;
@@ -578,6 +582,7 @@ int moveToDisk(struct page_link *toSwap){
 
   // Update list pointers
   removePageFromList(toSwap);
+  //proc->paging_meta_data[pageToSwapFromMem->pg.pages_array_index] = *pageToSwapFromMem;
 
   setFlagsOnSwap(pgdir, (char *)toSwap->page.page_id, 0); // set relevant flags
 
@@ -601,6 +606,7 @@ removePageFromList(struct page_link *pageToRemove){
     if (pageToRemove->next != 0){ //if it wasn't a single link in the list then update next to be the new head
       nextPage = pageToRemove->next;
       nextPage->prev = 0;
+      //proc->paging_meta_data[nextPage->pg.pages_array_index] = *nextPage;
     }
   }
   else{
@@ -796,6 +802,7 @@ struct page_link* choosePageToSwap(){
       break;
     case(NFUA):
       tmp = myproc()->page_list_head_ram;
+      // int shiftCounter = tmp->page.shiftCounter;
       while(tmp->next != 0){
         tmp = tmp->next;
         int shiftCounter = tmp->page.shiftCounter;
@@ -925,6 +932,7 @@ switchQueueAQ(pde_t *pgdir){
     PTE_A_off(pgdir, (char*)page_link->page.page_id);
   }
 }
+
 
 //**************************************************************************
 

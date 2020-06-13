@@ -23,8 +23,6 @@ exec(char *path, char **argv)
   struct page_link * backup_list_head = curproc->page_list_head_ram;
   int num_pages_ram = curproc->num_pages_ram;
   int num_pages_disk = curproc->num_pages_disk;
-  //struct page_link *tmp;
-  //uint index;
 
   begin_op();
 
@@ -51,24 +49,12 @@ exec(char *path, char **argv)
       backup_array[i].page = curproc->pages_meta_data[i].page;
       if (curproc->pages_meta_data[i].prev != 0){
         backup_array[i].prev = curproc->pages_meta_data[i].prev;
-        // tmp = myproc()->pages_meta_data[i].prev;
-        // index = tmp->page.index;
-        // backup_array[i].prev = &backup_array[index];
       }
       if (curproc->pages_meta_data[i].next != 0){
         backup_array[i].next = curproc->pages_meta_data[i].next;
-        // tmp = myproc()->pages_meta_data[i].next;
-        // index = tmp->page.index;
-        // backup_array[i].next = &backup_array[index];
       }
     }
 
-    // if (myproc()->page_list_head_ram != 0)
-    // {
-    //   tmp = myproc()->page_list_head_ram;
-    //   index = tmp->page.index;
-    //   backup_list_head = &backup_array[index];
-    // }
     backup_list_head = curproc->page_list_head_ram;
     init_meta_data(curproc);
   }

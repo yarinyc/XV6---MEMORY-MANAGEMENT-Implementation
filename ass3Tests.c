@@ -67,8 +67,9 @@ void test3(){
         *pagesAlloced[i] = i;
     }
     // page reads
+    printf(1,"iterations: ");
     for (i = 0; i < 100 ; i++){
-      printf(1,"iteration: %d\n",i);
+      printf(1,"%d ",i);
       *pagesAlloced[i%15] = 5;
       *pagesAlloced[15] = i;
       *pagesAlloced[16] = i;
@@ -89,7 +90,7 @@ void test3(){
     //NFUA - 14005 PF : 14019 page out
     //LAPA - 1575 PF : 1589 page out
     //AQ - 5438 PF : 5452 page out
-    printf(1,"Press Enter to continue\n");
+    printf(1,"\nPress Enter to continue\n");
     gets(input,8);
     exit();
   }
@@ -153,8 +154,8 @@ void test5(){
   int pid3 = fork();
   if(pid3 == 0){
     for (i = 0; i < 100 ; i++){
-      *pagesAlloced[i%28] = i+1;
-      printf(1, "%d ",(int)*pagesAlloced[i%28]);
+      *pagesAlloced[i%27] = i+1;
+      printf(1, "%d ",(int)*pagesAlloced[i%27]);
     }
     printf(1, "\n(with writes) number of free pages in the system after fork %d\n", getNumberOfFreePages());
     exit();
@@ -168,7 +169,7 @@ void test5(){
 int
 main(int argc, char *argv[]){
 
-  printf(1,"\n\n*** Sanity : Start ***\n\n");
+  printf(1,"\n\n*** ass3Tests : Start ***\n\n");
 
   test1();
 

@@ -113,8 +113,8 @@ trap(struct trapframe *tf)
       update_meta_data();
     }
     if(*pte & PTE_P){ //if true then it is a write to a read-only page
-      void *pa = (void*)PTE_ADDR(*pte);
-      uint ref = getRef((char*)P2V(pa));
+      uint pa = PTE_ADDR(*pte);
+      uint ref = getRef(P2V(pa));
       if(ref == 1){ // when there is only one reference we just need to grant write permission
         *pte = *pte | PTE_W;
       }
@@ -128,11 +128,12 @@ trap(struct trapframe *tf)
         }
         else{ // make a deep copy of this page and grant the current proc write permission
           memmove(mem, (void*)PGROUNDDOWN(pg_fault_addr), PGSIZE);
-          *pte = V2P(mem) | flags;
+          *pte = (V2P(mem)) | flags;
+          // cprintf("pte: 0x%x *pte: 0x%x\n",pte,*pte);
           lcr3(V2P(myproc()->pgdir));
         }
         kmemRelease();
-        decrementRef((char*)P2V(pa));
+        decrementRef(P2V(pa));
       }
       else{ //ref==0 
         cprintf(" ref==0\n");

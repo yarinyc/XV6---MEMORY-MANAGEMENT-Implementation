@@ -67,31 +67,32 @@ kfree(char *v)
 {
   struct run *r;
   if(((uint)v % PGSIZE) || (v < end) || (V2P(v) >= PHYSTOP)){
+    cprintf("Error v: 0x%x end: 0x%x V2P(v): 0x%x PHYSTOP: 0x%x \n",v,end,V2P(v),PHYSTOP);
     panic("kfree"); 
-    }
+  }
 
-    if(kmem.use_lock){
-      acquire(&kmem.lock);
-    }
+  if(kmem.use_lock){
+    acquire(&kmem.lock);
+  }
 
-    if(kmem.use_lock && kmem.referenceCounters[(V2P(v) / PGSIZE)] == 0){
-      cprintf("bad address 0x%x\n",v);
-      panic("kfree: ref is 0 and tried to kfree v");
-    }
+  if(kmem.use_lock && kmem.referenceCounters[(V2P(v) / PGSIZE)] == 0){
+    cprintf("bad address 0x%x\n",v);
+    panic("kfree: ref is 0 and tried to kfree v");
+  }
 
 
-    if(kmem.referenceCounters[(V2P(v) / PGSIZE)] > 0)
-        kmem.referenceCounters[(V2P(v) / PGSIZE)]--;
-    if(kmem.referenceCounters[(V2P(v) / PGSIZE)] == 0){
-      memset(v, 1, PGSIZE);
-      r = (struct run*)v;
-      r->next = kmem.freelist;
-      kmem.freelist = r;
-      gloabl_memory_meta_data.system_free_pages++;
-    }
+  if(kmem.referenceCounters[(V2P(v) / PGSIZE)] > 0)
+      kmem.referenceCounters[(V2P(v) / PGSIZE)]--;
+  if(kmem.referenceCounters[(V2P(v) / PGSIZE)] == 0){
+    memset(v, 1, PGSIZE);
+    r = (struct run*)v;
+    r->next = kmem.freelist;
+    kmem.freelist = r;
+    gloabl_memory_meta_data.system_free_pages++;
+  }
 
-    if(kmem.use_lock)
-      release(&kmem.lock);
+  if(kmem.use_lock)
+    release(&kmem.lock);
 }
    
 // Allocate one 4096-byte page of physical memory.
