@@ -319,8 +319,8 @@ deallocuvm(pde_t *pgdir, uint oldsz, uint newsz)
         panic("kfree (deallocuvm)");
       char *v = P2V(pa);
       // cprintf("deallocuvm: v 0x%x pte: 0x%x *pte: 0x%x\n",v,pte,*pte);
-      if(v==(char*)0x103000)
-        break;
+      // if(v==(char*)0x103000)
+      //   break;
       kfree(v);
       *pte = 0;
       if ((SELECTION != NONE) && (myproc()->pgdir == pgdir)){ //if paging is on
@@ -410,7 +410,10 @@ copyuvm(pde_t *pgdir, uint sz) //COW
 
     if(*pte & PTE_P){
       pa = PTE_ADDR(*pte);
-      *pte = *pte & ~PTE_W;
+      if(*pte & PTE_W){
+        *pte = *pte & ~PTE_W;
+        *pte = *pte | PTE_COW;
+      }
       flags = PTE_FLAGS(*pte);
       if(mappages(d, (void*)i, PGSIZE, pa, flags) < 0) {
         goto bad;
@@ -822,6 +825,9 @@ struct page_link* choosePageToSwap(){
       int min_number_of_ones = numOfOnes(shiftCounter2); 
       while(tmp->next != 0){
         tmp = tmp->next;
+        if(tmp->page.page_id >=0 || tmp->page.page_id <= 0x2000){ // ignore code/stack pages
+          continue;
+        }
         shiftCounter2 = tmp->page.shiftCounter;
         int current_numOfOnes = numOfOnes(shiftCounter2);
         pte = walkpgdir(myproc()->pgdir,(void*)tmp->page.page_id,0);

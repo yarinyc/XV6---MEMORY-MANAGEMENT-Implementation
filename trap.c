@@ -116,13 +116,21 @@ trap(struct trapframe *tf)
       uint pa = PTE_ADDR(*pte);
       uint ref = getRef(P2V(pa));
       if(ref == 1){ // when there is only one reference we just need to grant write permission
-        *pte = *pte | PTE_W;
+        // *pte = *pte | PTE_W;
+        if(*pte & PTE_COW){
+          *pte = *pte & ~PTE_COW;
+          *pte = *pte | PTE_W;
+        }
       }
       else if(ref > 1){ // when more then 1 reference for the same physical page we need to copy the page
         char *mem = kalloc();
         kmemLock();
         uint flags = PTE_FLAGS(*pte);
-        flags = flags | PTE_W;
+        if(flags & PTE_COW){
+          flags = flags & ~PTE_COW;
+          flags = flags | PTE_W;
+        }
+        // flags = flags | PTE_W;
         if(mem == 0){
           myproc()->killed = 1;
         }
